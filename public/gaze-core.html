@@ -10,12 +10,28 @@
             return false;
         };
 
-        // 親ウィンドウからのキャリブレーション命令を受け取る
+        // postMessage を 10fps に間引く（ML 推論自体は止まらないが親の負荷を大幅削減）
+        var lastPost = 0;
+        var POST_INTERVAL_MS = 100; // 10fps
+
         window.addEventListener('message', function(event) {
-            if (event.data && event.data.type === 'CALIBRATE') {
+            if (!event.data) return;
+
+            // キャリブレーション
+            if (event.data.type === 'CALIBRATE') {
                 try {
                     webgazer.recordScreenPosition(event.data.x, event.data.y, 'click');
                 } catch(e) {}
+            }
+
+            // スリープ中は WebGazer の ML 推論を一時停止してCPUを解放
+            if (event.data.type === 'SLEEP') {
+                try { webgazer.pause(); } catch(e) {}
+            }
+
+            // 復帰時に再開
+            if (event.data.type === 'WAKE') {
+                try { webgazer.resume(); } catch(e) {}
             }
         });
 
@@ -25,10 +41,14 @@
 
                 webgazer.params = webgazer.params || {};
                 webgazer.params.saveDataAcrossSessions = true;
+                webgazer.params.storingPoints = false; // 不要な学習点データをメモリに貯めない
 
-                // 親ウィンドウ（メイン画面）へ座標を送信
+                // 親ウィンドウへ座標を送信（10fps に間引き）
                 webgazer.setGazeListener(function(data) {
                     if (data == null) return;
+                    var now = Date.now();
+                    if (now - lastPost < POST_INTERVAL_MS) return;
+                    lastPost = now;
                     window.parent.postMessage({
                         type: 'GAZE_UPDATE',
                         x: Math.round(data.x),
@@ -38,9 +58,11 @@
 
                 await webgazer.begin();
 
-                // カメラ映像は非表示（iframe が透明なので不要）
+                // UI 要素は一切表示しない（iframe は透明）
                 webgazer.showVideo(false);
                 webgazer.showPredictionPoints(false);
+                webgazer.showFaceOverlay(false);
+                webgazer.showFaceFeedbackBox(false);
 
             } catch (err) {
                 window.parent.postMessage({ type: 'GAZE_ERROR', message: err.message }, '*');

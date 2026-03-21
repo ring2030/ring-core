@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
-import type { TriageResponse } from "@/app/api/chat/route";
+
+// API ルートから import type すると Next.js のサーバー/クライアント境界を越えるため
+// 型だけここで定義する
+interface TriageResponse {
+  response: string;
+  summary:  string;
+  priority: number;
+}
 
 const CAL_POINTS = [
   { rx: 0.1, ry: 0.12 },
@@ -29,6 +36,7 @@ export default function GrandmaGazePage() {
   const [aiText, setAiText] = useState("お話し相手を呼んでいます...");
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
+  const [conversationTurn, setConversationTurn] = useState(0);
 
   const [windowWidth, setWindowWidth] = useState(1000);
   const [windowHeight, setWindowHeight] = useState(700);
@@ -48,10 +56,23 @@ export default function GrandmaGazePage() {
   // 通知音（ブラウザの自動再生制限に対応）
   const { audioReady, playSubmitSound } = useAudio();
 
-  const resetSleepTimer = () => {
+  // isSuccess / isCalibrating の最新値をクロージャから安全に読むための ref
+  const isSuccessRef = useRef(false);
+  isSuccessRef.current = isSuccess;
+  const isCalibrationRef = useRef(true);
+  isCalibrationRef.current = isCalibrating;
+
+  // gazePoint スロットル用（~25fps に間引き、無限ループ防止）
+  const lastGazeUpdateRef = useRef(0);
+
+  // スリープタイマーリセット（useEffect に依存しない安定した関数）
+  // refs だけ使うので deps は空 → 毎レンダーで再生成されない
+  const resetSleepTimer = useCallback(() => {
+    // 送信中・AI会話中・キャリブレーション中はスリープさせない
+    if (isSuccessRef.current || isCalibrationRef.current) return;
     if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
     sleepTimerRef.current = setTimeout(() => setIsSleepMode(true), SLEEP_TIMEOUT_MS);
-  };
+  }, []);
 
   useEffect(() => {
     setWindowWidth(window.innerWidth);
@@ -72,31 +93,43 @@ export default function GrandmaGazePage() {
     }
   }, []);
 
-  // 視線データ受信
+  // 視線データ受信 ＋ スリープタイマーリセット
+  // ・~25fps にスロットルして setState の連打を防止（Maximum update depth 対策）
+  // ・タイマーリセットはここで直接行い、useEffect([gazePoint]) の連鎖を排除
   useEffect(() => {
+    const THROTTLE_MS = 16; // iframe 側が 100ms に絞るので受信側は緩めに（滑らかさ優先）
     const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === "GAZE_UPDATE") {
-        setGazePoint({ x: event.data.x, y: event.data.y });
-        setStatusMessage("視線を検知中...");
-      }
+      if (event.data.type !== "GAZE_UPDATE") return;
+      const now = Date.now();
+      if (now - lastGazeUpdateRef.current < THROTTLE_MS) return; // 間引き
+      lastGazeUpdateRef.current = now;
+      setGazePoint({ x: event.data.x, y: event.data.y });
+      setStatusMessage("視線を検知中...");
+      resetSleepTimer(); // ← useEffect 依存ではなく直接リセット
     };
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
-  }, []);
+  }, [resetSleepTimer]);
 
-  // gazePoint が更新されるたびにスリープタイマーをリセット
-  // ただし送信中・AI会話中（isSuccess）はタイマーをクリアしてスリープさせない
+  // ページ表示直後にもタイマーを開始（gaze が来る前にスリープさせるため）
   useEffect(() => {
-    if (isSuccess) {
-      if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
-      return;
-    }
     resetSleepTimer();
-    return () => {
-      if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gazePoint, isSuccess]);
+    return () => { if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current); };
+  }, [resetSleepTimer]);
+
+  // isSuccess が true（送信中/AI会話中）になったらタイマーを即クリア
+  useEffect(() => {
+    if (isSuccess && sleepTimerRef.current) {
+      clearTimeout(sleepTimerRef.current);
+      sleepTimerRef.current = null;
+    }
+  }, [isSuccess]);
+
+  // isSleepMode 変化時に WebGazer の ML 推論を pause/resume（CPU 省電力）
+  useEffect(() => {
+    const msg = isSleepMode ? { type: "SLEEP" } : { type: "WAKE" };
+    iframeRef.current?.contentWindow?.postMessage(msg, "*");
+  }, [isSleepMode]);
 
   // スリープ解除：タッチ時にオーバーレイを消してタイマーを再開
   const handleWakeUp = () => {
@@ -107,6 +140,13 @@ export default function GrandmaGazePage() {
   // 当たり判定（左右）— 150ms ごとに評価してリレンダーを抑制
   const gazeRef = useRef(gazePoint);
   gazeRef.current = gazePoint;
+  // target の最新値を updater 外から参照するための ref
+  const targetRef = useRef<"トイレ" | "お話" | null>(null);
+  targetRef.current = target;
+  // 二重送信防止フラグ
+  const hasSubmittedRef = useRef(false);
+  const conversationTurnRef = useRef(0);
+  conversationTurnRef.current = conversationTurn;
   useEffect(() => {
     if (isSuccess || isCalibrating || isSleepMode) return;
     const id = setInterval(() => {
@@ -122,27 +162,37 @@ export default function GrandmaGazePage() {
     return () => clearInterval(id);
   }, [isSuccess, isCalibrating, isSleepMode, windowWidth, windowHeight]);
 
-  // 激甘ゲージ
+  // 激甘ゲージ（updater は純粋に数値だけ更新。submitCall はここで呼ばない）
   useEffect(() => {
     if (isSuccess || isCalibrating || isSleepMode) return;
     const interval = setInterval(() => {
       setProgress((prev) => {
-        if (target) {
-          const next = prev + 10;
-          if (next >= 100) {
-            submitCall(target);
-            return 100;
-          }
-          return next;
-        } else {
-          return Math.max(0, prev - 1);
-        }
+        if (target) return Math.min(prev + 10, 100);
+        return Math.max(0, prev - 1);
       });
     }, 100);
     return () => clearInterval(interval);
   }, [target, isSuccess, isCalibrating, isSleepMode]);
 
+  // progress が 100 に達したら submitCall を起動（updater の外で呼ぶことで二重呼び出しを防止）
+  useEffect(() => {
+    if (progress >= 100 && !isSuccess && !hasSubmittedRef.current && targetRef.current) {
+      hasSubmittedRef.current = true;
+      submitCall(targetRef.current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress]);
+
   // AI会話システム
+  // ────────────────────────────────────────────────────────────────
+  // 設計方針
+  //   1. デバウンス: onresult が来るたびにバッファへ追記し、
+  //      最後の発話から 2 秒間入力がなかった場合だけ API 送信
+  //   2. ノイズ除去: 2 秒後に空白除去した文字が 3 文字未満なら
+  //      API を叩かずバッファをリセットして再聴取
+  //   3. マイク制御: isSuccess=true になった時だけ起動し、
+  //      会話終了時は必ず recognition.abort() でマイクを停止
+  // ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!isSuccess || sentReason !== "お話") return;
 
@@ -150,12 +200,24 @@ export default function GrandmaGazePage() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = SR ? new SR() : null;
     const synth = window.speechSynthesis;
-    let mounted = true;
-    let thinking = false;
-    let resultReceived = false;
-    let errorCount = 0;
-    const MAX_ERRORS = 2;
 
+    // ── ローカル変数 ──────────────────────────────────────────────
+    let mounted = true;
+    let shouldContinueConversation = true;
+    let thinking = false;
+    let speechBuffer = "";                                          // デバウンス用テキストバッファ
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null; // 2 秒待機タイマー
+    let noSpeechTimer: ReturnType<typeof setTimeout> | null = null; // 15 秒無音タイムアウト
+
+    // ── タイマーユーティリティ ────────────────────────────────────
+    const clearDebounce = () => {
+      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    };
+    const clearNoSpeech = () => {
+      if (noSpeechTimer) { clearTimeout(noSpeechTimer); noSpeechTimer = null; }
+    };
+
+    // ── 音声合成ヘルパー ─────────────────────────────────────────
     const getJpVoice = (): Promise<SpeechSynthesisVoice | null> =>
       new Promise((resolve) => {
         const pick = (voices: SpeechSynthesisVoice[]) =>
@@ -163,121 +225,183 @@ export default function GrandmaGazePage() {
           voices.find((v) => v.lang === "ja-JP" && !v.localService) ||
           voices.find((v) => v.lang === "ja-JP") ||
           null;
-
         const voices = synth.getVoices();
         if (voices.length > 0) {
           resolve(pick(voices));
         } else {
-          synth.addEventListener("voiceschanged", () => resolve(pick(synth.getVoices())), {
-            once: true,
-          });
+          synth.addEventListener("voiceschanged", () => resolve(pick(synth.getVoices())), { once: true });
         }
       });
 
+    const makeUtter = async (text: string) => {
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ja-JP"; u.rate = 0.9; u.pitch = 1.1;
+      u.voice = await getJpVoice();
+      return u;
+    };
+
+    // ── マイク起動（会話継続用） ──────────────────────────────────
+    // 注意: デバウンス収集中の再起動は startListening() を経由しない
+    const startListening = () => {
+      if (!mounted || thinking || !recognition || !shouldContinueConversation) return;
+      speechBuffer = "";
+      clearDebounce();
+      setAiText("（話しかけてください...）");
+      setIsListening(true);
+      // 15 秒無音で自動終了
+      clearNoSpeech();
+      noSpeechTimer = setTimeout(() => {
+        if (!mounted || !shouldContinueConversation) return;
+        speakAndFinish("またお話ししましょうね。");
+      }, 15_000);
+      try { recognition.start(); } catch { /* 既に起動中は無視 */ }
+    };
+
+    // ── AI 発話 → 再聴取 ──────────────────────────────────────────
     const speakAndListen = async (text: string) => {
       if (!mounted) return;
+      clearNoSpeech();
+      clearDebounce();
+      speechBuffer = "";
       setAiText(text);
       setIsListening(false);
       setIsThinking(false);
       thinking = false;
 
-      const utter = new SpeechSynthesisUtterance(text);
-      utter.lang = "ja-JP";
-      utter.rate = 0.9;
-      utter.pitch = 1.1;
-      utter.voice = await getJpVoice();
-
-      utter.onend = () => {
-        if (recognition && mounted) startListening();
+      const u = await makeUtter(text);
+      u.onend = () => {
+        // TTS 音声がスピーカーから消えてから認識開始（自分の声を拾わないように500ms待機）
+        if (mounted && shouldContinueConversation) {
+          setTimeout(() => { if (mounted && shouldContinueConversation) startListening(); }, 500);
+        }
       };
-
       synth.cancel();
-      synth.speak(utter);
+      synth.speak(u);
     };
 
-    const startListening = () => {
-      if (!mounted || thinking || !recognition) return;
-      resultReceived = false;
-      setAiText("（話しかけてください...）");
-      setIsListening(true);
+    // ── 会話終了 → マイク停止 → resetToMain ─────────────────────
+    const speakAndFinish = async (text: string) => {
+      if (!mounted) return;
+      shouldContinueConversation = false;
+      clearNoSpeech();
+      clearDebounce();
+      speechBuffer = "";
+      // マイクを即停止（要件3）
+      if (recognition) { try { recognition.stop(); } catch {} }
+      setAiText(text);
+      setIsListening(false);
+      setIsThinking(false);
+      thinking = false;
+
+      const u = await makeUtter(text);
+      u.onend = () => { if (mounted) resetToMain(); };
+      synth.cancel();
+      synth.speak(u);
+    };
+
+    // ── API 送信（デバウンス後に確定テキストを渡す） ──────────────
+    const sendToApi = async (finalText: string) => {
+      if (!mounted || !shouldContinueConversation || thinking) return;
+
+      // 3 ターン上限
+      if (conversationTurnRef.current >= 3) {
+        speakAndFinish("きよ子さんのお話、みっちゃんにしっかり伝えましたから、ゆっくり休んでくださいね。");
+        return;
+      }
+
+      // updater 外で ref を更新（Strict Mode 二重実行でズレないように）
+      const nextTurn = conversationTurnRef.current + 1;
+      conversationTurnRef.current = nextTurn;
+      setConversationTurn(nextTurn);
+
+      // API 送信中はマイクを止める（要件3 + 429 防止）
+      if (recognition) { try { recognition.stop(); } catch {} }
+      thinking = true;
+      setIsThinking(true);
+      setIsListening(false);
+      setAiText(`「${finalText}」...`);
+
       try {
-        recognition.start();
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: finalText }),
+        });
+        const data: TriageResponse = await res.json();
+        if (mounted) {
+          // Firestore トリアージ反映
+          const callId = currentCallIdRef.current;
+          if (callId) {
+            updateDoc(doc(getFirestoreDb(), "calls", callId), {
+              要約: data.summary,
+              緊急度: data.priority,
+            }).catch(() => {});
+          }
+          speakAndListen(data.response); // ← ここで thinking=false になり再聴取へ
+        }
       } catch {
-        // すでに起動中の場合は無視
+        if (mounted) {
+          setAiText("通信に問題があります。少し待ってみてください。");
+          setIsThinking(false);
+          thinking = false;
+          setTimeout(() => { if (mounted && shouldContinueConversation) startListening(); }, 2000);
+        }
       }
     };
 
+    // ── recognition イベント設定 ─────────────────────────────────
     if (recognition) {
       recognition.lang = "ja-JP";
-      recognition.continuous = false;
+      recognition.continuous = false;  // 1 発話ずつ区切り、デバウンスで結合
       recognition.interimResults = false;
 
-      recognition.onresult = async (event: any) => {
-        // ─── 排他ロック: API 送信中は新しい音声入力を無視（429 防止） ───
-        if (thinking) return;
+      recognition.onresult = (event: any) => {
+        if (!mounted || !shouldContinueConversation || thinking) return;
 
-        resultReceived = true;
-        errorCount = 0;
-        const said = event.results[0][0].transcript;
-        thinking = true;
-        setIsThinking(true);
-        setIsListening(false);
-        setAiText(`「${said}」...`);
+        // 発話があったので 15 秒タイムアウトをリセット
+        clearNoSpeech();
+        noSpeechTimer = setTimeout(() => {
+          if (!mounted || !shouldContinueConversation) return;
+          speakAndFinish("またお話ししましょうね。");
+        }, 15_000);
 
-        try {
-          const res = await fetch("/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: said }),
-          });
+        const segment = String(event.results[0][0].transcript ?? "").trim();
+        if (!segment) return;
 
-          if (!res.ok) {
-            errorCount++;
-            if (mounted) {
-              if (errorCount >= MAX_ERRORS) {
-                setAiText("少し調子が悪いです。ボタンを押して呼んでね。");
-                setIsThinking(false);
-                thinking = false;
-              } else {
-                setAiText("うまく聞き取れませんでした。もう一度話しかけてください。");
-                setIsThinking(false);
-                thinking = false;
-                setTimeout(() => { if (mounted && !thinking) startListening(); }, 2000);
-              }
-            }
+        // バッファに追記して画面に表示
+        speechBuffer = (speechBuffer ? speechBuffer + "　" + segment : segment);
+        setAiText(`「${speechBuffer}」`);
+        setIsListening(false); // 収集中は聴取インジケータを消す
+
+        // ── デバウンス: 2 秒間無入力で送信判断 ──────────────────
+        clearDebounce();
+        debounceTimer = setTimeout(() => {
+          if (!mounted || !shouldContinueConversation || thinking) return;
+
+          const finalText = speechBuffer.replace(/\s+/g, "");
+          speechBuffer = "";
+          clearDebounce();
+
+          // 要件2: 3 文字未満はノイズ扱い → バッファリセットして再聴取
+          if (finalText.length < 3) {
+            startListening();
             return;
           }
 
-          const data: TriageResponse = await res.json();
-          if (mounted) {
-            errorCount = 0;
-
-            // ─── トリアージ結果を Firestore ドキュメントへ反映 ───────────
-            const callId = currentCallIdRef.current;
-            if (callId) {
-              updateDoc(doc(getFirestoreDb(), "calls", callId), {
-                要約: data.summary,
-                緊急度: data.priority,
-              }).catch(() => {}); // 失敗してもAI会話は止めない
-            }
-
-            speakAndListen(data.response);
-          }
-        } catch {
-          errorCount++;
-          if (mounted) {
-            setAiText("通信に問題があります。少し待ってみてください。");
-            setIsThinking(false);
-            thinking = false;
-          }
-        }
+          sendToApi(finalText);
+        }, 2_000);
       };
 
       recognition.onend = () => {
-        if (!resultReceived && mounted && !thinking) {
+        if (!mounted || !shouldContinueConversation || thinking) return;
+        // デバウンスタイマーが動いている = 発話収集中 → すぐ再起動してもっと聴く
+        // デバウンスタイマーがない = 2 秒経過済み or 初回起動前 → 何もしない
+        if (debounceTimer) {
           setTimeout(() => {
-            if (mounted && !thinking) startListening();
-          }, 800);
+            if (mounted && shouldContinueConversation && !thinking && debounceTimer) {
+              try { recognition.start(); } catch {}
+            }
+          }, 80);
         }
       };
 
@@ -286,18 +410,23 @@ export default function GrandmaGazePage() {
           speakAndListen("マイクの許可が必要です。ブラウザの設定をご確認ください。");
           return;
         }
-        if (mounted && !thinking) {
+        if (mounted && !thinking && shouldContinueConversation) {
           setTimeout(() => {
-            if (mounted && !thinking) startListening();
-          }, 1500);
+            if (mounted && !thinking && shouldContinueConversation) startListening();
+          }, 1_500);
         }
       };
     }
 
+    // 最初の挨拶（800ms 後に TTS → その後 startListening()）
     setTimeout(() => speakAndListen("きよ子さん、どうしました？何かありましたか？"), 800);
 
+    // クリーンアップ: マイクを確実に停止（要件3）
     return () => {
       mounted = false;
+      shouldContinueConversation = false;
+      clearNoSpeech();
+      clearDebounce();
       synth.cancel();
       if (recognition) recognition.abort();
     };
@@ -307,6 +436,10 @@ export default function GrandmaGazePage() {
   const submitCall = async (reason: string) => {
     setIsSuccess(true);
     setSentReason(reason);
+    if (reason === "お話") {
+      setConversationTurn(0);
+      conversationTurnRef.current = 0;
+    }
     playSubmitSound(); // ✅ 送信成功の「ポーン」
     currentCallIdRef.current = null; // 前回の ID をリセット
 
@@ -330,6 +463,9 @@ export default function GrandmaGazePage() {
   const resetToMain = () => {
     window.speechSynthesis.cancel();
     currentCallIdRef.current = null;
+    setConversationTurn(0);
+    conversationTurnRef.current = 0;
+    hasSubmittedRef.current = false; // 送信フラグをリセット
     setIsSuccess(false);
     setProgress(0);
     setTarget(null);
