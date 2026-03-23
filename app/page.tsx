@@ -62,6 +62,10 @@ export default function GrandmaGazePage() {
   const isCalibrationRef = useRef(true);
   isCalibrationRef.current = isCalibrating;
 
+  // カメラ状態
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [iframeKey, setIframeKey] = useState(0); // 増やすと iframe を強制リロード
+
   // gazePoint スロットル用（~25fps に間引き、無限ループ防止）
   const lastGazeUpdateRef = useRef(0);
 
@@ -99,10 +103,16 @@ export default function GrandmaGazePage() {
   useEffect(() => {
     const THROTTLE_MS = 16; // iframe 側が 100ms に絞るので受信側は緩めに（滑らかさ優先）
     const handleMessage = (event: MessageEvent) => {
+      if (event.data.type === "GAZE_ERROR") {
+        setCameraError(event.data.message ?? "カメラエラーが発生しました");
+        setStatusMessage("カメラエラー");
+        return;
+      }
       if (event.data.type !== "GAZE_UPDATE") return;
       const now = Date.now();
       if (now - lastGazeUpdateRef.current < THROTTLE_MS) return; // 間引き
       lastGazeUpdateRef.current = now;
+      setCameraError(null); // データが来たらエラーをクリア
       setGazePoint({ x: event.data.x, y: event.data.y });
       setStatusMessage("視線を検知中...");
       resetSleepTimer(); // ← useEffect 依存ではなく直接リセット
@@ -508,6 +518,7 @@ export default function GrandmaGazePage() {
         スリープ中は visibility:hidden で処理を軽減する。
       */}
       <iframe
+        key={iframeKey}
         ref={iframeRef}
         src="/gaze-core.html"
         allow="camera"
@@ -645,10 +656,27 @@ export default function GrandmaGazePage() {
         </div>
       ) : !isCalibrating ? (
         <div className="w-full h-full px-12 flex flex-col items-center justify-center">
-          <div className="text-center absolute top-8 z-[10000]">
-            <p className="text-2xl font-bold text-slate-400 bg-slate-800/90 inline-block px-8 py-3 rounded-full shadow-md border-2 border-slate-700">
-              {statusMessage}
+          <div className="text-center absolute top-8 z-[10000] flex flex-col items-center gap-3">
+            <p className={`text-2xl font-bold inline-block px-8 py-3 rounded-full shadow-md border-2 ${
+              cameraError
+                ? "bg-red-900/90 text-red-300 border-red-700"
+                : "bg-slate-800/90 text-slate-400 border-slate-700"
+            }`}>
+              {cameraError ? `⚠️ ${cameraError}` : statusMessage}
             </p>
+            {(cameraError || statusMessage === "カメラを準備しています...") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCameraError(null);
+                  setStatusMessage("カメラを準備しています...");
+                  setIframeKey((k) => k + 1);
+                }}
+                className="text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 px-5 py-2 rounded-full border border-slate-500 transition"
+              >
+                📷 カメラを再起動
+              </button>
+            )}
           </div>
 
           {/* 再キャリブレーションボタン */}
