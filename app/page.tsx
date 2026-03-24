@@ -53,6 +53,9 @@ export default function GrandmaGazePage() {
   // トリアージ: Firestore に書いたドキュメント ID を保持（AI応答後に更新するため）
   const currentCallIdRef = useRef<string | null>(null);
 
+  // 会話履歴（Gemini に渡すターン履歴）
+  const conversationHistoryRef = useRef<{ role: string; text: string }[]>([]);
+
   // 通知音（ブラウザの自動再生制限に対応）
   const { audioReady, playSubmitSound } = useAudio();
 
@@ -216,7 +219,7 @@ export default function GrandmaGazePage() {
     let shouldContinueConversation = true;
     let thinking = false;
     let speechBuffer = "";                                          // デバウンス用テキストバッファ
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null; // 2 秒待機タイマー
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null; // 3.5 秒待機タイマー
     let noSpeechTimer: ReturnType<typeof setTimeout> | null = null; // 15 秒無音タイムアウト
 
     // ── タイマーユーティリティ ────────────────────────────────────
@@ -280,9 +283,9 @@ export default function GrandmaGazePage() {
 
       const u = await makeUtter(text);
       u.onend = () => {
-        // TTS 音声がスピーカーから消えてから認識開始（自分の声を拾わないように500ms待機）
+        // TTS 音声がスピーカーから消えてから認識開始（自分の声を拾わないように1200ms待機）
         if (mounted && shouldContinueConversation) {
-          setTimeout(() => { if (mounted && shouldContinueConversation) startListening(); }, 500);
+          setTimeout(() => { if (mounted && shouldContinueConversation) startListening(); }, 1_200);
         }
       };
       synth.cancel();
@@ -313,8 +316,8 @@ export default function GrandmaGazePage() {
     const sendToApi = async (finalText: string) => {
       if (!mounted || !shouldContinueConversation || thinking) return;
 
-      // 3 ターン上限
-      if (conversationTurnRef.current >= 3) {
+      // 10 ターン上限
+      if (conversationTurnRef.current >= 10) {
         speakAndFinish("きよ子さんのお話、みっちゃんにしっかり伝えましたから、ゆっくり休んでくださいね。");
         return;
       }
@@ -335,10 +338,20 @@ export default function GrandmaGazePage() {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: finalText }),
+          body: JSON.stringify({
+            message: finalText,
+            history: conversationHistoryRef.current,
+          }),
         });
         const data: TriageResponse = await res.json();
         if (mounted) {
+          // 会話履歴を更新
+          conversationHistoryRef.current = [
+            ...conversationHistoryRef.current,
+            { role: "user", text: finalText },
+            { role: "model", text: data.response },
+          ];
+
           // Firestore トリアージ反映
           const callId = currentCallIdRef.current;
           if (callId) {
@@ -347,7 +360,13 @@ export default function GrandmaGazePage() {
               緊急度: data.priority,
             }).catch(() => {});
           }
-          speakAndListen(data.response); // ← ここで thinking=false になり再聴取へ
+
+          // 緊急度4-5はナースが向かうので会話を終了、それ以外は継続
+          if (data.priority >= 4) {
+            speakAndFinish(data.response);
+          } else {
+            speakAndListen(data.response);
+          }
         }
       } catch {
         if (mounted) {
@@ -399,7 +418,7 @@ export default function GrandmaGazePage() {
           }
 
           sendToApi(finalText);
-        }, 2_000);
+        }, 3_500);
       };
 
       recognition.onend = () => {
@@ -449,6 +468,7 @@ export default function GrandmaGazePage() {
     if (reason === "お話") {
       setConversationTurn(0);
       conversationTurnRef.current = 0;
+      conversationHistoryRef.current = [];
     }
     playSubmitSound(); // ✅ 送信成功の「ポーン」
     currentCallIdRef.current = null; // 前回の ID をリセット

@@ -18,7 +18,7 @@ const SYSTEM_PRIMER = [
           "あなたはおばあちゃん「きよ子さん」の言葉を理解するAIトリアージエンジンです。\n\n" +
           "おばあちゃんの発言に対し、必ず以下のJSONだけを返してください。説明文は不要です。\n" +
           "{\n" +
-          '  "response": "おばあちゃんへの優しい返事（20文字以内）",\n' +
+          '  "response": "おばあちゃんへの返事",\n' +
           '  "summary": "看護師向けの短い状況要約（例: トイレの訴え）",\n' +
           '  "priority": 緊急度の数値（1〜5、5が最高）\n' +
           "}\n\n" +
@@ -27,11 +27,12 @@ const SYSTEM_PRIMER = [
           "4: トイレの訴え・強い不安・助けを呼ぶ → 急ぎ対応\n" +
           "3: 通常の介助依頼・水が欲しいなど → 通常対応\n" +
           "2: 寂しい・眠れない・つぶやき → 経過観察\n" +
-          "1: 挨拶・世間話・感謝 → 記録のみ\n\n" +
+          "1: 挨拶・世間話・雑談・質問 → 会話を楽しむ\n\n" +
           "【返事のルール】\n" +
-          "・緊急度4〜5（痛み・トイレ・助けを呼ぶ）のときは相槌なしで即行動を伝える（例:「すぐ行きます！」「今すぐ向かいます！」）\n" +
-          "・緊急度1〜3のときは「うんうん」「そうなの」「あらあら」などの相槌を文頭に入れて優しく応える\n" +
-          "・難しい言葉は使わない\n\n" +
+          "・緊急度4〜5のときは相槌なしで即行動を伝える（例:「すぐ行きます！」「今すぐ向かいます！」）。20文字以内で簡潔に。\n" +
+          "・緊急度3のときは「うんうん」などの相槌を文頭に入れ、要求を受け止める。30文字以内。\n" +
+          "・緊急度1〜2のときは話題に正面から答える。質問には具体的に答え、話を自然につなげる（文字数制限なし、ただし話しやすい長さで）。\n" +
+          "・難しい言葉は使わない。「です・ます」よりも親しみやすい口調で。\n\n" +
           "ルールを理解したら「はい、わかりました」とだけ答えてください。",
       },
     ],
@@ -167,6 +168,7 @@ type GeminiAttemptResult = {
 async function tryGeminiGenerate(params: {
   apiKey: string;
   message: string;
+  history?: { role: string; text: string }[];
   preferredModel: string;
   preferredBase?: string;
 }): Promise<GeminiAttemptResult> {
@@ -206,9 +208,15 @@ async function tryGeminiGenerate(params: {
             temperature: 0.7,
           };
 
+      const historyContents = (params.history ?? []).map((h) => ({
+        role: h.role === "user" ? "user" : "model",
+        parts: [{ text: h.text }],
+      }));
+
       const requestBody = {
         contents: [
           ...SYSTEM_PRIMER,
+          ...historyContents,
           { role: "user", parts: [{ text: params.message }] },
         ],
         generationConfig,
@@ -275,6 +283,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     message = String(body?.message ?? "");
+    const history: { role: string; text: string }[] = Array.isArray(body?.history) ? body.history : [];
     console.log(`\n====== [API /chat] リクエスト受信 ======`);
     console.log(`[API /chat] ユーザー発言: "${message}"`);
 
@@ -305,6 +314,7 @@ export async function POST(req: Request) {
     const result = await tryGeminiGenerate({
       apiKey,
       message,
+      history,
       preferredModel: model,
       preferredBase: apiBase,
     });
