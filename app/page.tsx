@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
+import { ElderVideoLetterOverlay } from "@/components/kiyoko/ElderVideoLetterOverlay";
 
 // API ルートから import type すると Next.js のサーバー/クライアント境界を越えるため
 // 型だけここで定義する
@@ -21,6 +22,7 @@ const CAL_POINTS = [
   { rx: 0.9, ry: 0.88 },
 ];
 const CAL_TS_KEY = "kiyoko_cal_ts";
+const CAL_MAP_KEY = "kiyoko_cal_map_v1";
 const CAL_TTL_MS = 24 * 60 * 60 * 1000;
 const SLEEP_TIMEOUT_MS = 10_000;
 
@@ -45,6 +47,8 @@ export default function GrandmaGazePage() {
   const [isCalibrating, setIsCalibrating] = useState(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [calStep, setCalStep] = useState(0);
+  const calObservedXRef = useRef<(number | null)[]>(Array(CAL_POINTS.length).fill(null));
+  const gazeCorrectionRef = useRef<{ scale: number; offset: number } | null>(null);
 
   // スリープモード
   const [isSleepMode, setIsSleepMode] = useState(false);
@@ -97,6 +101,19 @@ export default function GrandmaGazePage() {
     const ts = localStorage.getItem(CAL_TS_KEY);
     if (ts && Date.now() - parseInt(ts) < CAL_TTL_MS) {
       setIsCalibrating(false);
+    }
+    const raw = localStorage.getItem(CAL_MAP_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw) as { scale?: number; offset?: number };
+        const scale = Number(parsed.scale);
+        const offset = Number(parsed.offset);
+        if (Number.isFinite(scale) && Number.isFinite(offset) && scale > 0) {
+          gazeCorrectionRef.current = { scale, offset };
+        }
+      } catch {
+        // ignore broken cache
+      }
     }
   }, []);
 
@@ -165,10 +182,16 @@ export default function GrandmaGazePage() {
     const id = setInterval(() => {
       const { x, y } = gazeRef.current;
       if (x < 0) return;
+      let correctedX = x;
+      const correction = gazeCorrectionRef.current;
+      if (correction) {
+        correctedX = x * correction.scale + correction.offset;
+      }
       let hit: "トイレ" | "お話" | null = null;
       if (y > windowHeight * 0.1) {
-        if (x < windowWidth * 0.45) hit = "トイレ";
-        else if (x > windowWidth * 0.55) hit = "お話";
+        // 右側が入りにくい端末向けに、デッドゾーンを少し狭くする
+        if (correctedX < windowWidth * 0.46) hit = "トイレ";
+        else if (correctedX > windowWidth * 0.52) hit = "お話";
       }
       setTarget((prev) => (prev === hit ? prev : hit));
     }, 150);
@@ -509,12 +532,37 @@ export default function GrandmaGazePage() {
     const x = pt.rx * window.innerWidth;
     const y = pt.ry * windowHeight;
 
+    // 各キャリブレーション点で、その瞬間の視線Xを記録して後で補正に利用
+    const observedX = gazeRef.current.x;
+    calObservedXRef.current[calStep] =
+      Number.isFinite(observedX) && observedX > 0 ? observedX : null;
+
     for (let i = 0; i < 5; i++) {
       iframeRef.current?.contentWindow?.postMessage({ type: "CALIBRATE", x, y }, "*");
     }
 
     const next = calStep + 1;
     if (next >= CAL_POINTS.length) {
+      // 左右端の教育点から線形補正を作成（右側が認識されにくい問題を補正）
+      const leftCandidates = [calObservedXRef.current[0], calObservedXRef.current[3]].filter(
+        (v): v is number => typeof v === "number" && Number.isFinite(v),
+      );
+      const rightCandidates = [calObservedXRef.current[1], calObservedXRef.current[4]].filter(
+        (v): v is number => typeof v === "number" && Number.isFinite(v),
+      );
+      if (leftCandidates.length > 0 && rightCandidates.length > 0) {
+        const leftAvg = leftCandidates.reduce((a, b) => a + b, 0) / leftCandidates.length;
+        const rightAvg = rightCandidates.reduce((a, b) => a + b, 0) / rightCandidates.length;
+        const observedSpan = rightAvg - leftAvg;
+        if (observedSpan > 30) {
+          const targetSpan = windowWidth * 0.8; // 10%〜90% を想定
+          const rawScale = targetSpan / observedSpan;
+          const scale = Math.min(2.5, Math.max(0.5, rawScale));
+          const offset = windowWidth * 0.1 - leftAvg * scale;
+          gazeCorrectionRef.current = { scale, offset };
+          localStorage.setItem(CAL_MAP_KEY, JSON.stringify({ scale, offset }));
+        }
+      }
       localStorage.setItem(CAL_TS_KEY, Date.now().toString());
       setIsCalibrating(false);
     } else {
@@ -755,6 +803,9 @@ export default function GrandmaGazePage() {
           </div>
         </div>
       ) : null}
+      <ElderVideoLetterOverlay
+        suppressReplayUi={isSuccess || isCalibrating || isSleepMode}
+      />
     </div>
   );
 }

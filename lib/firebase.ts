@@ -1,5 +1,6 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -29,6 +30,7 @@ function getFirebaseApp(): FirebaseApp {
 }
 
 let db: Firestore | null = null;
+let storage: FirebaseStorage | null = null;
 
 export function getFirestoreDb(): Firestore {
   if (typeof window === "undefined") {
@@ -38,4 +40,14 @@ export function getFirestoreDb(): Firestore {
     db = getFirestore(getFirebaseApp());
   }
   return db;
+}
+
+export function getFirebaseStorage(): FirebaseStorage {
+  if (typeof window === "undefined") {
+    throw new Error("Firebase Storage is browser-only.");
+  }
+  if (!storage) {
+    storage = getStorage(getFirebaseApp());
+  }
+  return storage;
 }

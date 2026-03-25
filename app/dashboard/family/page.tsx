@@ -1,15 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  addDoc,
   collection,
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
   Timestamp,
   where,
 } from "firebase/firestore";
-import { getFirestoreDb } from "@/lib/firebase";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
+import { getVideoMessagesCollection } from "@/lib/videoMessages";
 import {
   Clock,
   Heart,
@@ -17,6 +21,7 @@ import {
   RefreshCw,
   Sparkles,
   WifiOff,
+  Video,
 } from "lucide-react";
 import type { CallSummaryItem } from "@/app/api/family-summary/route";
 
@@ -113,9 +118,57 @@ export default function FamilyDashboardPage() {
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [aiGenerated, setAiGenerated] = useState(false); // 初回自動生成フラグ
+  const aiAutoRunRef = useRef(false);
+
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  const [videoUploadOk, setVideoUploadOk] = useState(false);
+  const videoInputRef = useRef<HTMLInputElement>(null);
 
   const dateLabel = todayLabel();
+
+  const handleVideoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setVideoUploadError(null);
+    setVideoUploadOk(false);
+    setVideoUploading(true);
+    try {
+      const storage = getFirebaseStorage();
+      const coll = getVideoMessagesCollection();
+      const path = `videos/${Date.now()}_${file.name.replace(/[^\w.\-]/g, "_")}`;
+      const storageRef = ref(storage, path);
+      console.log("[family][video] upload:start", {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        path,
+        collection: coll,
+      });
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      const docRef = await addDoc(collection(getFirestoreDb(), coll), {
+        sender: "family",
+        type: "video",
+        content: url,
+        timestamp: serverTimestamp(),
+      });
+      console.log("[family][video] upload:success", {
+        docId: docRef.id,
+        collection: coll,
+        path,
+        url,
+      });
+      setVideoUploadOk(true);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("[family][video] upload:error", err);
+      setVideoUploadError(msg);
+    } finally {
+      setVideoUploading(false);
+    }
+  };
 
   // ─── Firestore 購読（今日分のみ） ──────────────────────
 
@@ -139,15 +192,30 @@ export default function FamilyDashboardPage() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const docs: CallDoc[] = snap.docs.map((d) => ({
-          id: d.id,
-          reasons: d.data().理由 ?? [],
-          notes: d.data().特記事項 ?? "",
-          sender: d.data().送信者 ?? "不明",
-          ts: d.data().送信日時 ?? null,
-        }));
-        setCalls(docs);
-        setLoading(false);
+        try {
+          const docs: CallDoc[] = snap.docs.map((d) => {
+            const raw = d.data();
+            const reasonsRaw = raw.理由;
+            const reasons = Array.isArray(reasonsRaw)
+              ? reasonsRaw
+              : typeof reasonsRaw === "string"
+                ? [reasonsRaw]
+                : [];
+            return {
+              id: d.id,
+              reasons,
+              notes: typeof raw.特記事項 === "string" ? raw.特記事項 : "",
+              sender: typeof raw.送信者 === "string" ? raw.送信者 : "不明",
+              ts: raw.送信日時 ?? null,
+            };
+          });
+          setCalls(docs);
+        } catch (e) {
+          console.error("[family] calls map error", e);
+          setFirestoreError("データの表示に失敗しました");
+        } finally {
+          setLoading(false);
+        }
       },
       (err) => {
         setFirestoreError(err.message);
@@ -180,22 +248,41 @@ export default function FamilyDashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: { error?: string; text?: string } = {};
+      try {
+        data = rawText ? (JSON.parse(rawText) as typeof data) : {};
+      } catch {
+        throw new Error(
+          res.ok ? "応答の形式が不正です" : `HTTP ${res.status}`,
+        );
+      }
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      setAiMessage(data.text);
-    } catch (e: any) {
-      setAiError(e.message ?? "要約の取得に失敗しました");
+      setAiMessage(typeof data.text === "string" ? data.text : null);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "要約の取得に失敗しました";
+      setAiError(msg);
+      console.error("[family] family-summary", e);
     } finally {
       setAiLoading(false);
     }
   }, [dateLabel]);
 
-  // データ取得完了後に1回だけ自動生成
+  // データ取得完了後に1回だけ自動生成（AI 失敗してもページ全体は継続）
   useEffect(() => {
-    if (loading || aiGenerated) return;
-    setAiGenerated(true);
-    generateSummary(calls);
-  }, [loading, aiGenerated, calls, generateSummary]);
+    if (loading || aiAutoRunRef.current) return;
+    aiAutoRunRef.current = true;
+    void (async () => {
+      try {
+        await generateSummary(calls);
+      } catch (e) {
+        console.error("[family] generateSummary", e);
+        setAiError(
+          e instanceof Error ? e.message : "要約の取得に失敗しました",
+        );
+      }
+    })();
+  }, [loading, calls, generateSummary]);
 
   // ─── 集計 ───────────────────────────────────────────
 
@@ -237,6 +324,52 @@ export default function FamilyDashboardPage() {
       </header>
 
       <main className="mx-auto max-w-3xl space-y-6 px-6 py-8">
+
+        {/* 動画レター（Firebase Storage + messages） */}
+        <section className="rounded-3xl border border-violet-200/60 bg-white/80 p-6 shadow-md backdrop-blur-sm">
+          <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-violet-700">
+            <Video size={18} className="text-violet-500" />
+            動画レター（おばあちゃんの画面に届きます）
+          </h2>
+          <p className="mb-4 text-sm text-stone-500">
+            動画を選ぶと Storage の <code className="rounded bg-stone-100 px-1">videos/</code>{" "}
+            に保存され、Firestore のメッセージとして送信されます。
+          </p>
+          {/* iOS / スマホ: display:none + input.click() はファイル選択が開かないことがあるため、label + sr-only を使用 */}
+          <label
+            className={`inline-flex min-h-[48px] min-w-[min(100%,20rem)] cursor-pointer touch-manipulation select-none items-center justify-center gap-2 rounded-2xl border-2 border-violet-300 bg-violet-50 px-6 py-4 text-base font-semibold text-violet-800 transition hover:bg-violet-100 active:scale-[0.99] ${
+              videoUploading ? "pointer-events-none opacity-50" : ""
+            }`}
+          >
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/*"
+              className="sr-only"
+              disabled={videoUploading}
+              onChange={handleVideoFile}
+            />
+            {videoUploading ? (
+              <>
+                <RefreshCw size={20} className="animate-spin shrink-0" />
+                アップロード中…
+              </>
+            ) : (
+              <>
+                <Video size={20} className="shrink-0" />
+                動画を選んで送信
+              </>
+            )}
+          </label>
+          {videoUploadOk && (
+            <p className="mt-3 text-sm font-medium text-emerald-600">
+              送信しました。おばあちゃんの画面で自動再生されます。
+            </p>
+          )}
+          {videoUploadError && (
+            <p className="mt-3 text-sm text-red-500">⚠️ {videoUploadError}</p>
+          )}
+        </section>
 
         {/* Firestore エラー */}
         {firestoreError && (

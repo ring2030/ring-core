@@ -32,7 +32,9 @@ const SYSTEM_PRIMER = [
           "・緊急度4〜5のときは相槌なしで即行動を伝える（例:「すぐ行きます！」「今すぐ向かいます！」）。20文字以内で簡潔に。\n" +
           "・緊急度3のときは「うんうん」などの相槌を文頭に入れ、要求を受け止める。30文字以内。\n" +
           "・緊急度1〜2のときは話題に正面から答える。質問には具体的に答え、話を自然につなげる（文字数制限なし、ただし話しやすい長さで）。\n" +
-          "・難しい言葉は使わない。「です・ます」よりも親しみやすい口調で。\n\n" +
+          "・難しい言葉は使わない。「です・ます」よりも親しみやすい口調で。\n" +
+          "・日本語の語を勝手に言い換えない。ユーザーが言った語（例: お出かけ日和）は同じ語で返す。\n" +
+          "・聞き取りが曖昧な語は捏造しない（例: 人名を勝手に作らない）。不明なら短く確認する。\n\n" +
           "ルールを理解したら「はい、わかりました」とだけ答えてください。",
       },
     ],
@@ -191,7 +193,8 @@ async function tryGeminiGenerate(params: {
       const generationConfig = isV1beta
         ? {
             maxOutputTokens: 200,
-            temperature: 0.7,
+            // 日本語の言い換え暴走を抑える
+            temperature: 0.25,
             responseMimeType: "application/json",
             responseSchema: {
               type: "object",
@@ -205,7 +208,7 @@ async function tryGeminiGenerate(params: {
           }
         : {
             maxOutputTokens: 200,
-            temperature: 0.7,
+            temperature: 0.25,
           };
 
       const historyContents = (params.history ?? []).map((h) => ({
@@ -309,7 +312,8 @@ export async function POST(req: Request) {
     }
 
     const apiBase = process.env.GEMINI_API_BASE?.replace(/\/$/, "");
-    const model = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
+    // 日本語の安定性重視。必要なら .env.local の GEMINI_MODEL で上書き可能
+    const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 
     const result = await tryGeminiGenerate({
       apiKey,
