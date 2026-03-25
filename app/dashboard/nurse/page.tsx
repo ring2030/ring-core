@@ -1,342 +1,491 @@
 "use client";
 
-import React, { useEffect, useState, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { 
-  getFirestore, 
-  collection, 
-  query, 
-  onSnapshot, 
-  orderBy 
-} from "firebase/firestore";
-import { 
-  PieChart, Pie, Cell, 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
-  ResponsiveContainer
+import { collection, getFirestore, onSnapshot, orderBy, query } from "firebase/firestore";
+import {
+  BarChart, Bar, CartesianGrid, Cell, Legend, PieChart, Pie,
+  ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { 
-  Activity, Clock, CheckCircle2, Heart, 
-  LayoutDashboard, TrendingUp, AlertCircle,
-  Bell, ShieldCheck, Users, Volume2, Info, Wifi, WifiOff
+import {
+  Activity, AlertTriangle, BedDouble, Bell,
+  CheckCircle2, Clock, Heart, Sparkles,
+  TrendingDown, UserCheck, Volume2, Wifi, WifiOff, X,
 } from "lucide-react";
 
-// --- Firebase初期設定 ---
+import PatientCard, { type PatientCardData } from "@/components/nurse/PatientCard";
+import ActivityLog,  { type CallRow }        from "@/components/nurse/ActivityLog";
+import SeedDataButton from "@/components/nurse/SeedDataButton";
+
+// ─── Firebase ────────────────────────────────────────────────────────────────
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId:         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket:     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  appId:             process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+const app  = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof window !== 'undefined' && (window as any).__app_id ? (window as any).__app_id : 'default-app-id';
+const db   = getFirestore(app);
 
-const COLORS = {
-  "トイレ": "#fb923c",
-  "お話": "#60a5fa",
-  "痛い": "#f87171",
-  "寂しい": "#c084fc",
-  "その他": "#94a3b8"
+// ─── 患者マスタ ───────────────────────────────────────────────────────────────
+
+interface Patient {
+  id: string;
+  name: string;
+  room: string;
+  age: number;
+  condition: string;
+  senderNames: string[];
+}
+
+const PATIENTS: Patient[] = [
+  { id: "kiyoko", name: "アライキヨコ",  room: "101", age: 82, condition: "アルツハイマー型認知症", senderNames: ["きよ子","アライキヨコ"] },
+  { id: "tome",   name: "ムラセタロウ",  room: "102", age: 78, condition: "レビー小体型認知症",    senderNames: ["ムラセタロウ","トメ","とめ"] },
+  { id: "hanako", name: "ミヤキタジロウ", room: "103", age: 85, condition: "血管性認知症",          senderNames: ["ミヤキタジロウ","花子","はなこ"] },
+];
+
+// ─── 分析モックデータ ─────────────────────────────────────────────────────────
+
+const DETAIL_REASON_DATA = [
+  { name: "排泄の介助",         value: 28, color: "#f97316", emoji: "🚽" },
+  { name: "傾聴・お話し相手",   value: 22, color: "#60a5fa", emoji: "💬" },
+  { name: "不安・孤独感の緩和", value: 18, color: "#a78bfa", emoji: "🤝" },
+  { name: "水分・食事サポート", value: 12, color: "#34d399", emoji: "💧" },
+  { name: "痛み・体調管理",     value:  8, color: "#f87171", emoji: "🚨" },
+  { name: "その他",             value:  6, color: "#94a3b8", emoji: "📋" },
+];
+
+const MONTHLY_COMPARISON = [
+  { month: "4月", 緊急対応: 45, AIの傾聴で安心:  0 },
+  { month: "5月", 緊急対応: 48, AIの傾聴で安心:  0 },
+  { month: "6月", 緊急対応: 31, AIの傾聴で安心: 17 },
+  { month: "7月", 緊急対応: 19, AIの傾聴で安心: 36 },
+  { month: "8月", 緊急対応: 17, AIの傾聴で安心: 38 },
+  { month: "9月", 緊急対応: 14, AIの傾聴で安心: 40 },
+];
+
+const KPI = { aiResolvedRate: 74, reducedVisits: 31, savedMinutes: 155 } as const;
+
+// ─── ユーティリティ ───────────────────────────────────────────────────────────
+
+function isToday(d: Date): boolean {
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+function reasonStr(raw: unknown): string {
+  if (Array.isArray(raw)) return raw[0] ?? "不明";
+  return String(raw ?? "不明");
+}
+
+const REASON_EMOJI: Record<string, string> = {
+  "トイレ": "🚽", "お話": "💬", "痛い": "🚨", "寂しい": "🤝",
+  "水が欲しい": "💧", "薬が欲しい": "💊", "胸が痛い": "🚨", "転んだ": "⚠️",
+  "眠れない": "🌙", "不安": "🫂", "助けて": "🚨", "トイレ（急ぎ）": "🚽",
+  "気分が悪い": "😔", "めまいがする": "💫", "お腹が空いた": "🍚",
+  "寒い": "🥶", "体位を変えて": "🛏️",
 };
+
+const PIE_COLORS: Record<string, string> = {
+  "トイレ": "#fb923c", "お話": "#60a5fa", "痛い": "#f87171",
+  "寂しい": "#c084fc", "その他": "#94a3b8",
+};
+
+// ─── Toast 型 ─────────────────────────────────────────────────────────────────
+
+interface Toast { id: string; patientName: string; reason: string; priority: number; }
+
+// ─── メインコンポーネント ─────────────────────────────────────────────────────
 
 export default function NurseDashboard() {
-  const [user, setUser] = useState<any>(null);
-  const [calls, setCalls] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isOnline,       setIsOnline]       = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(false);
-  const [isOnline, setIsOnline] = useState(true);
-  const isInitialLoad = useRef(true);
+  const [calls,          setCalls]          = useState<CallRow[]>([]);
+  const [loading,        setLoading]        = useState(true);
+  const [toasts,         setToasts]         = useState<Toast[]>([]);
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
-  // 🔊 ナースコール音（Web Audio API）
-  const playChime = () => {
-    if (!isAudioEnabled) return;
+  const isInitialLoad     = useRef(true);
+  const isAudioEnabledRef = useRef(false);
+  isAudioEnabledRef.current = isAudioEnabled;
+
+  // ── チャイム ──────────────────────────────────────────────────────────────
+  const playChime = useCallback((urgent: boolean) => {
+    if (!isAudioEnabledRef.current) return;
     try {
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc1 = audioCtx.createOscillator();
-      const gain1 = audioCtx.createGain();
-      osc1.type = 'sine';
-      osc1.frequency.setValueAtTime(660, audioCtx.currentTime);
-      gain1.gain.setValueAtTime(0.1, audioCtx.currentTime);
-      gain1.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
-      osc1.connect(gain1);
-      gain1.connect(audioCtx.destination);
-      osc1.start();
-      osc1.stop(audioCtx.currentTime + 0.5);
-    } catch (e) { console.error(e); }
-  };
-
-  // 🔑 1. 認証（名無しパスポートの発行）
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        await signInAnonymously(auth);
-      } catch (err: any) {
-        console.error("Auth error:", err);
-        setError("認証エラー：Firebaseで『匿名ログイン』を有効にしてください。");
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      if (urgent) {
+        [0, 0.32, 0.64].forEach((offset) => {
+          const osc = ctx.createOscillator(); const gain = ctx.createGain();
+          osc.type = "square";
+          osc.frequency.setValueAtTime(880, ctx.currentTime + offset);
+          gain.gain.setValueAtTime(0.07, ctx.currentTime + offset);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + offset + 0.28);
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + offset); osc.stop(ctx.currentTime + offset + 0.3);
+        });
+      } else {
+        const osc = ctx.createOscillator(); const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(660, ctx.currentTime);
+        gain.gain.setValueAtTime(0.06, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + 0.5);
       }
-    };
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, setUser);
-    return () => unsubscribe();
+    } catch {}
   }, []);
 
-  // 📞 2. リアルタイム・ホットライン（常時接続）
+  // ── 認証 ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (!user) return;
-    
-    // データがある場所を指定
-    const callsRef = collection(db, 'artifacts', appId, 'public', 'data', 'calls');
-    const q = query(callsRef, orderBy("送信日時", "desc"));
+    signInAnonymously(auth).catch(console.error);
+    return onAuthStateChanged(auth, () => {});
+  }, []);
 
-    // 🚀 ここが「常時読み込み」の心臓部！
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+  // ── Firestore ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const q = query(collection(db, "calls"), orderBy("送信日時", "desc"));
+    return onSnapshot(q, (snap) => {
       setIsOnline(true);
-      const data = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().送信日時?.toDate() || new Date()
-      }));
 
-      // 新しい呼び出しがあったら音を鳴らす！
-      if (!isInitialLoad.current && snapshot.docChanges().some(change => change.type === "added")) {
-        playChime();
+      if (!isInitialLoad.current) {
+        snap.docChanges().filter((c) => c.type === "added").forEach((c) => {
+          const data     = c.doc.data();
+          const priority = data.緊急度 ?? 1;
+          const reason   = reasonStr(data.理由);
+          const sender   = data.送信者 ?? "患者";
+
+          playChime(priority >= 4);
+
+          if (priority >= 3) {
+            const toast: Toast = { id: c.doc.id, patientName: sender, reason, priority };
+            setToasts((prev) => [toast, ...prev.slice(0, 2)]);
+            if (priority >= 4) setAlertDismissed(false);
+            setTimeout(() => setToasts((p) => p.filter((t) => t.id !== toast.id)), 6_000);
+          }
+        });
       }
+
       isInitialLoad.current = false;
-      setCalls(data);
-      setLoading(false); // 最初の1回が届いたら、もう読み込み画面は出さない！
-    }, (err) => {
-      console.error("Firestore error:", err);
-      setIsOnline(false);
-    });
+      setCalls(snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id:       d.id,
+          reason:   reasonStr(data.理由),
+          notes:    data.特記事項 ?? "",
+          summary:  data.要約 ?? "",
+          priority: data.緊急度 ?? 1,
+          sender:   data.送信者 ?? "不明",
+          date:     data.送信日時?.toDate() ?? new Date(),
+        };
+      }));
+      setLoading(false);
+    }, () => setIsOnline(false));
+  }, [playChime]);
 
-    return () => unsubscribe();
-  }, [user, isAudioEnabled]);
-
-  // 3. データ集計（数秒に1回でOKなので効率化）
-  const stats = useMemo(() => {
-    const reasonCounts: any = { "トイレ": 0, "お話": 0, "痛い": 0, "寂しい": 0, "その他": 0 };
-    const hourlyData: any = Array(24).fill(0).map((_, i) => ({ hour: `${i}時`, count: 0 }));
-
-    calls.forEach(call => {
-      const reasonRaw = Array.isArray(call.理由) ? call.理由[0] : call.理由;
-      const key = reasonCounts[reasonRaw] !== undefined ? reasonRaw : "その他";
-      reasonCounts[key]++;
-      const hour = call.date.getHours();
-      hourlyData[hour].count++;
-    });
-
-    const pieData = Object.keys(reasonCounts).map(name => ({ name, value: reasonCounts[name] })).filter(d => d.value > 0);
-    return { pieData, hourlyData, total: calls.length };
+  // ── 患者データ集計 ────────────────────────────────────────────────────────
+  const patientData = useMemo((): PatientCardData[] => {
+    return PATIENTS.map((p) => {
+      const myCalls    = calls.filter((c) => p.senderNames.includes(c.sender));
+      const todayCalls = myCalls.filter((c) => isToday(c.date));
+      const latest     = todayCalls[0] ?? null;
+      const maxPriority = todayCalls.length > 0 ? Math.max(...todayCalls.map((c) => c.priority)) : 0;
+      return { ...p, myCalls, todayCalls, latest, maxPriority };
+    }).sort((a, b) => b.maxPriority - a.maxPriority);
   }, [calls]);
 
-  // 🚑 致命的なエラー時
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#020617] text-white p-10">
-        <AlertCircle className="w-20 h-20 text-red-500 mb-6 animate-pulse" />
-        <h1 className="text-3xl font-black mb-4 uppercase">System Blocked</h1>
-        <p className="text-slate-400 text-center max-w-md mb-8">{error}</p>
-        <button onClick={() => window.location.reload()} className="px-10 py-4 bg-blue-600 rounded-full font-black shadow-lg shadow-blue-500/20 hover:scale-105 transition-transform">REBOOT SYSTEM</button>
-      </div>
-    );
-  }
+  const hasEmergency = patientData.some((p) => p.maxPriority >= 4);
 
-  // ⏳ 最初の接続時のみ表示
+  // ── チャート集計 ──────────────────────────────────────────────────────────
+  const stats = useMemo(() => {
+    const counts: Record<string, number> = { "トイレ": 0, "お話": 0, "痛い": 0, "寂しい": 0, "その他": 0 };
+    const hourly = Array.from({ length: 24 }, (_, i) => ({ hour: `${i}`, count: 0 }));
+    calls.forEach((c) => {
+      const key = counts[c.reason] !== undefined ? c.reason : "その他";
+      counts[key]++;
+      hourly[c.date.getHours()].count++;
+    });
+    return {
+      pieData: Object.entries(counts).filter(([,v]) => v > 0).map(([name, value]) => ({ name, value })),
+      hourly,
+      total: calls.length,
+    };
+  }, [calls]);
+
+  // ─── ローディング ─────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-[#020617]">
-        <div className="relative w-24 h-24 mb-6">
-          <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
-          <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin"></div>
-        </div>
-        <p className="text-blue-400 font-black tracking-widest animate-pulse">CONNECTING TO RING-CORE...</p>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-rose-200 border-t-rose-500" />
+        <p className="font-bold text-stone-400">ナースステーションを起動中...</p>
       </div>
     );
   }
 
+  // ─── UI ──────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-[#020617] text-slate-100 p-6 md:p-10 font-sans selection:bg-blue-500/30">
-      
-      {/* 🔊 ブラウザの音ブロックを解除するボタン */}
-      {!isAudioEnabled && (
-        <div className="fixed top-0 left-0 w-full bg-indigo-600 text-white py-3 px-6 z-[100] flex justify-between items-center shadow-2xl animate-in slide-in-from-top duration-500">
-          <p className="font-bold flex items-center gap-2 text-sm sm:text-base">
-            <Volume2 className="w-5 h-5 animate-bounce" /> 呼び出し音を有効にするには、右のボタンを押してください
-          </p>
-          <button onClick={() => { setIsAudioEnabled(true); playChime(); }} className="bg-white text-indigo-600 px-6 py-2 rounded-full font-black text-xs sm:text-sm shadow-xl active:scale-90 transition-transform">
-            音声を有効化
-          </button>
-        </div>
-      )}
+    <>
+      <style>{`
+        @keyframes fadeInDown {
+          from { opacity: 0; transform: translateY(-8px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        @keyframes fadeInUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to   { opacity: 1; transform: translateY(0);    }
+        }
+        .fade-in-down { animation: fadeInDown 0.4s ease-out forwards; }
+        .fade-in-up   { animation: fadeInUp   0.4s ease-out forwards; }
+      `}</style>
 
-      {/* 🚀 ヘッダー：通信状態も表示！ */}
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div className="bg-blue-500/20 p-2 rounded-2xl border border-blue-500/30 shadow-[0_0_20px_rgba(59,130,246,0.2)]">
-              <LayoutDashboard className="w-8 h-8 text-blue-400" />
-            </div>
-            <h1 className="text-3xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
-              ring COMMAND CENTER
-            </h1>
-          </div>
-          <div className="flex items-center gap-4 ml-1">
-            <p className={`text-[10px] font-black px-3 py-1 rounded-full flex items-center gap-1.5 ${isOnline ? 'bg-green-500/10 text-green-400 border border-green-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'}`}>
-              {isOnline ? <Wifi className="w-3 h-3" /> : <WifiOff className="w-3 h-3" />}
-              {isOnline ? 'LIVE CONNECTION' : 'OFFLINE'}
-            </p>
-            <p className="text-slate-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-500/50" /> Secure Protocol v1.2
-            </p>
-          </div>
-        </div>
-        
-        <div className="grid grid-cols-2 gap-4 w-full md:w-auto">
-          <div className="bg-slate-900/60 border border-white/5 p-4 rounded-3xl flex items-center gap-4 shadow-2xl backdrop-blur-md">
-            <div className="bg-orange-500/10 p-2 rounded-full">
-              <Activity className="w-6 h-6 text-orange-400" />
-            </div>
-            <div>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Total</p>
-              <p className="text-2xl font-black text-white leading-none">{stats.total}</p>
-            </div>
-          </div>
-          <div className="bg-slate-900/60 border border-white/5 p-4 rounded-3xl flex items-center gap-4 shadow-2xl backdrop-blur-md">
-            <div className="bg-blue-500/10 p-2 rounded-full">
-              <Users className="w-6 h-6 text-blue-400" />
-            </div>
-            <div>
-              <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Operator</p>
-              <p className="text-xs font-black text-slate-300">NURSE-A</p>
-            </div>
-          </div>
-        </div>
-      </header>
+      <div className="min-h-screen bg-stone-50 font-sans">
 
-      {/* 📊 グラフエリア */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-        <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/5 blur-[60px] group-hover:bg-orange-500/10 transition-colors"></div>
-          <h2 className="text-sm font-black mb-8 flex items-center gap-3 text-slate-400 uppercase tracking-widest">
-            <TrendingUp className="w-4 h-4 text-orange-400" />
-            CALL REASON ANALYSIS
-          </h2>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie data={stats.pieData} innerRadius={65} outerRadius={85} paddingAngle={8} dataKey="value" stroke="none">
-                  {stats.pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[entry.name as keyof typeof COLORS] || COLORS["その他"]} />
-                  ))}
-                </Pie>
-                <Tooltip contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '16px', color: '#fff', fontSize: '12px', fontWeight: 'bold' }} />
-              </PieChart>
-            </ResponsiveContainer>
+        {/* ── Toast ──────────────────────────────────────────────────────────── */}
+        <div className="fixed right-4 top-4 z-[9999] flex flex-col gap-2 min-w-[260px] max-w-xs">
+          {toasts.map((t) => (
+            <div key={t.id} className={`flex items-start gap-3 rounded-2xl border px-5 py-4 shadow-2xl backdrop-blur-sm fade-in-down
+              ${t.priority >= 4 ? "border-red-200 bg-red-50 text-red-800" : "border-amber-100 bg-amber-50 text-amber-800"}`}>
+              {t.priority >= 4
+                ? <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+                : <Bell className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />}
+              <div className="flex-1">
+                <p className="text-sm font-black">{t.patientName}さんから呼び出し</p>
+                <p className="text-xs opacity-75">{REASON_EMOJI[t.reason] ?? "📋"} {t.reason}</p>
+              </div>
+              <button onClick={() => setToasts((p) => p.filter((x) => x.id !== t.id))} className="opacity-40 hover:opacity-80 transition-opacity">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* ── 緊急アラートバー ──────────────────────────────────────────────── */}
+        {hasEmergency && !alertDismissed && (
+          <div className="flex items-center justify-between bg-red-600 px-6 py-3 text-white shadow-lg fade-in-down">
+            <div className="flex animate-pulse items-center gap-3">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <p className="font-black tracking-wide">緊急コールが入っています ─ 至急対応してください</p>
+            </div>
+            <button onClick={() => setAlertDismissed(true)} className="rounded-full p-1 hover:bg-red-500 transition-colors">
+              <X className="h-5 w-5" />
+            </button>
           </div>
-          <div className="grid grid-cols-2 gap-2 mt-6">
-            {stats.pieData.map((d) => (
-              <div key={d.name} className="flex items-center gap-2.5 p-2.5 bg-white/5 rounded-2xl border border-white/5">
-                <div className="w-2.5 h-2.5 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: COLORS[d.name as keyof typeof COLORS], color: COLORS[d.name as keyof typeof COLORS] }} />
-                <span className="text-[10px] font-black text-slate-400">{d.name}</span>
-                <span className="text-xs font-black text-white ml-auto">{d.value}</span>
+        )}
+
+        {/* ── 音声バナー ──────────────────────────────────────────────────────── */}
+        {!isAudioEnabled && (
+          <div className="flex items-center justify-between border-b border-rose-100 bg-rose-50 px-6 py-2.5">
+            <p className="flex items-center gap-2 text-sm font-bold text-rose-600">
+              <Volume2 className="h-4 w-4 animate-bounce" />
+              呼び出し音を有効にしてください
+            </p>
+            <button
+              onClick={() => { setIsAudioEnabled(true); playChime(false); }}
+              className="rounded-full bg-rose-500 px-5 py-1.5 text-xs font-black text-white shadow-md hover:bg-rose-600 active:scale-95 transition-all"
+            >
+              音声を有効化
+            </button>
+          </div>
+        )}
+
+        {/* ── ヘッダー ─────────────────────────────────────────────────────────── */}
+        <header className="border-b border-stone-200 bg-white px-6 py-4 shadow-sm">
+          <div className="mx-auto flex max-w-7xl items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-100 shadow-sm">
+                <Heart className="h-5 w-5 text-rose-500" />
+              </div>
+              <div>
+                <h1 className="text-lg font-black text-stone-800">ナースステーション</h1>
+                <p className={`flex items-center gap-1.5 text-[10px] font-bold ${isOnline ? "text-emerald-500" : "text-stone-400"}`}>
+                  {isOnline ? <><Wifi className="h-3 w-3" /> リアルタイム接続中</> : <><WifiOff className="h-3 w-3" /> オフライン</>}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {/* DEVボタン */}
+              <SeedDataButton />
+
+              <div className="hidden text-right sm:block">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">担当</p>
+                <p className="flex items-center gap-1.5 font-black text-stone-700">
+                  <UserCheck className="h-4 w-4 text-rose-400" />
+                  山田 看護師（リーダー）
+                </p>
+              </div>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-200 bg-rose-100 text-sm font-black text-rose-600 transition-transform hover:scale-110">
+                山
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6">
+
+          {/* ── サマリーカード ────────────────────────────────────────────────── */}
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {[
+              { label: "本日のコール", value: calls.filter((c) => isToday(c.date)).length,                     icon: <Bell className="h-5 w-5 text-rose-400" />,     bg: "bg-rose-50 border-rose-100" },
+              { label: "担当患者",     value: PATIENTS.length,                                                  icon: <BedDouble className="h-5 w-5 text-sky-400" />,  bg: "bg-sky-50 border-sky-100" },
+              { label: "緊急対応中",   value: patientData.filter((p) => p.maxPriority >= 4).length,             icon: <AlertTriangle className="h-5 w-5 text-red-400" />, bg: patientData.some((p) => p.maxPriority >= 4) ? "bg-red-50 border-red-200" : "bg-stone-50 border-stone-100" },
+              { label: "対応済み",     value: calls.filter((c) => isToday(c.date) && c.priority <= 2).length,   icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />, bg: "bg-emerald-50 border-emerald-100" },
+            ].map((s, i) => (
+              <div key={s.label} className={`flex items-center gap-4 rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 fade-in-up ${s.bg}`}
+                style={{ animationDelay: `${i * 60}ms` }}>
+                <div className="rounded-xl bg-white p-2 shadow-sm">{s.icon}</div>
+                <div>
+                  <p className="text-xs font-bold text-stone-400">{s.label}</p>
+                  <p className="text-2xl font-black text-stone-800">{s.value}</p>
+                </div>
               </div>
             ))}
           </div>
-        </div>
 
-        <div className="lg:col-span-2 bg-slate-900/40 backdrop-blur-xl border border-white/5 p-8 rounded-[3rem] shadow-2xl">
-          <h2 className="text-sm font-black mb-8 flex items-center gap-3 text-slate-400 uppercase tracking-widest">
-            <Clock className="w-4 h-4 text-blue-400" />
-            HOURLY ACTIVITY MONITOR
-          </h2>
-          <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.hourlyData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(255,255,255,0.03)" />
-                <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 'bold'}} />
-                <YAxis axisLine={false} tickLine={false} tick={{fill: '#475569', fontSize: 10, fontWeight: 'bold'}} />
-                <Tooltip cursor={{fill: 'rgba(255,255,255,0.02)'}} contentStyle={{ backgroundColor: '#0f172a', border: 'none', borderRadius: '16px' }} />
-                <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} animationDuration={2000} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-      </div>
-
-      {/* 📝 ログ：ここも自動更新！ */}
-      <div className="bg-slate-900/40 backdrop-blur-xl border border-white/5 p-8 rounded-[3rem] shadow-2xl">
-        <div className="flex justify-between items-center mb-8 px-2">
-          <h2 className="text-sm font-black flex items-center gap-3 text-slate-400 uppercase tracking-widest">
-            <Bell className="w-4 h-4 text-green-400 animate-pulse" />
-            LIVE ACTIVITY LOG
-          </h2>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-500 rounded-full animate-ping"></span>
-            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Monitoring</span>
-          </div>
-        </div>
-        <div className="overflow-hidden rounded-[2.5rem] border border-white/5">
-          <table className="w-full text-left text-[11px] sm:text-xs">
-            <thead className="bg-white/5">
-              <tr>
-                <th className="p-5 font-black text-slate-500 uppercase tracking-widest">Timestamp</th>
-                <th className="p-5 font-black text-slate-500 uppercase tracking-widest">Action</th>
-                <th className="p-5 font-black text-slate-500 uppercase tracking-widest">Priority</th>
-                <th className="p-5 font-black text-slate-500 uppercase tracking-widest">Device Log</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 font-bold">
-              {calls.slice(0, 12).map((call) => (
-                <tr key={call.id} className="hover:bg-white/[0.02] transition-colors group">
-                  <td className="p-5 font-mono text-blue-400/70">
-                    {call.date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </td>
-                  <td className="p-5">
-                    <span className="px-4 py-1.5 rounded-full text-[9px] font-black text-white shadow-lg shadow-black/40" 
-                          style={{ backgroundColor: COLORS[call.理由 as keyof typeof COLORS] || COLORS["その他"] }}>
-                      {call.理由}
-                    </span>
-                  </td>
-                  <td className="p-5">
-                    {call.理由 === "痛い" ? (
-                      <span className="flex items-center gap-2 text-red-400 bg-red-400/10 px-3 py-1.5 rounded-xl w-fit border border-red-500/20">
-                        <AlertCircle className="w-3.5 h-3.5" /> URGENT
-                      </span>
-                    ) : call.理由 === "寂しい" ? (
-                      <span className="flex items-center gap-2 text-purple-400 bg-purple-400/10 px-3 py-1.5 rounded-xl w-fit border border-purple-500/20">
-                        <Heart className="w-3.5 h-3.5" /> SUPPORT
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2 text-green-400 bg-green-400/10 px-3 py-1.5 rounded-xl w-fit border border-green-500/20">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> ROUTINE
-                      </span>
-                    )}
-                  </td>
-                  <td className="p-5 text-slate-600 font-medium italic group-hover:text-slate-400 transition-colors">
-                    {call.特記事項 || "Secure event recorded"}
-                  </td>
-                </tr>
+          {/* ── 患者カード一覧 ────────────────────────────────────────────────── */}
+          <section>
+            <h2 className="mb-4 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
+              <BedDouble className="h-4 w-4" /> 患者一覧
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {patientData.map((p, i) => (
+                <div key={p.id} className="fade-in-up" style={{ animationDelay: `${i * 80 + 100}ms` }}>
+                  <PatientCard patient={p} />
+                </div>
               ))}
-              {calls.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="p-24 text-center">
-                    <div className="flex flex-col items-center gap-4 opacity-20">
-                      <Info className="w-16 h-16" />
-                      <p className="text-xl font-black uppercase tracking-[0.3em]">No Calls Detected</p>
+            </div>
+          </section>
+
+          {/* ── AI 効果分析ダッシュボード ──────────────────────────────────────── */}
+          <section>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
+                <Sparkles className="h-4 w-4 text-violet-400" /> AI 効果分析ダッシュボード
+              </h2>
+              <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[10px] font-black text-violet-500">
+                実証データ（4〜9月累計）
+              </span>
+            </div>
+
+            <div className="grid gap-6 md:grid-cols-2">
+
+              {/* 左：詳細ドーナツ */}
+              <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-sm transition-all hover:shadow-md">
+                <h3 className="mb-1 flex items-center gap-2 font-black text-stone-700">
+                  <Activity className="h-4 w-4 text-rose-400" />
+                  呼び出し理由の詳細分析
+                </h3>
+                <p className="mb-5 text-[11px] text-stone-400">AIサマリーをもとに6カテゴリに分類（累計 94 件）</p>
+
+                {/* ResponsiveContainerはminHeight付きdivでラップ（Recharts警告対策） */}
+                <div style={{ width: "100%", minHeight: 192 }}>
+                  <ResponsiveContainer width="99%" height={192}>
+                    <PieChart>
+                      <Pie data={DETAIL_REASON_DATA} innerRadius={52} outerRadius={76} paddingAngle={4} dataKey="value" stroke="none">
+                        {DETAIL_REASON_DATA.map((d, i) => <Cell key={i} fill={d.color} />)}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value} 件`]} contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "12px" }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                <div className="mt-3 space-y-1.5">
+                  {DETAIL_REASON_DATA.map((d) => {
+                    const pct = Math.round((d.value / 94) * 100);
+                    return (
+                      <div key={d.name} className="flex items-center gap-2.5">
+                        <span className="text-sm">{d.emoji}</span>
+                        <div className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ backgroundColor: d.color }} />
+                        <span className="flex-1 text-[11px] font-bold text-stone-600">{d.name}</span>
+                        <div className="h-1.5 w-20 overflow-hidden rounded-full bg-stone-100">
+                          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, backgroundColor: d.color }} />
+                        </div>
+                        <span className="w-8 text-right text-[10px] font-black text-stone-500">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 右：KPI + 比較バー */}
+              <div className="flex flex-col gap-4 rounded-3xl border border-stone-100 bg-white p-6 shadow-sm transition-all hover:shadow-md">
+                <div>
+                  <h3 className="mb-1 flex items-center gap-2 font-black text-stone-700">
+                    <TrendingDown className="h-4 w-4 text-emerald-500" />
+                    AI 導入による削減効果
+                  </h3>
+                  <p className="text-[11px] text-stone-400">優先度 1〜2 はAIの傾聴で安心、3〜5 のみ駆けつけ対応</p>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { value: `${KPI.aiResolvedRate}%`,     label: "AIの傾聴で\n安心できたコール", bg: "from-violet-50 to-violet-100 border-violet-100", text: "text-violet-700" },
+                    { value: `${KPI.reducedVisits}件`,      label: "削減された\n月間駆けつけ",     bg: "from-emerald-50 to-emerald-100 border-emerald-100", text: "text-emerald-700" },
+                    { value: `${KPI.savedMinutes}分`,       label: "看護師の\n節約時間/月",        bg: "from-sky-50 to-sky-100 border-sky-100", text: "text-sky-700" },
+                  ].map((k) => (
+                    <div key={k.label} className={`rounded-2xl bg-gradient-to-br border p-3 text-center ${k.bg}`}>
+                      <p className={`text-xl font-black ${k.text}`}>{k.value}</p>
+                      <p className="mt-0.5 whitespace-pre-line text-[9px] font-bold leading-tight text-stone-500">{k.label}</p>
                     </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                  ))}
+                </div>
+
+                <div className="flex-1">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-stone-400">月別コール対応内訳</p>
+                  <div style={{ width: "100%", minHeight: 176 }}>
+                    <ResponsiveContainer width="99%" height={176}>
+                      <BarChart data={MONTHLY_COMPARISON} barGap={2}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
+                        <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10, fontWeight: "bold" }} />
+                        <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10 }} width={24} />
+                        <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "11px" }} formatter={(v) => [`${v} 件`]} />
+                        <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "10px", fontWeight: "bold", paddingTop: "4px" }} />
+                        <Bar dataKey="緊急対応"       fill="#fda4af" radius={[4,4,0,0]} maxBarSize={20} />
+                        <Bar dataKey="AIの傾聴で安心" fill="#7dd3fc" radius={[4,4,0,0]} maxBarSize={20} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
+                  <p className="text-[11px] font-bold leading-relaxed text-emerald-700">
+                    💡 月平均 <strong>{KPI.reducedVisits} 件</strong>の駆けつけを削減。
+                    看護師の余力を、本当に必要な患者ケアへ集中できます。
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* ── 時間帯別アクティビティ ────────────────────────────────────────── */}
+          <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-sm">
+            <h2 className="mb-6 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
+              <Clock className="h-3.5 w-3.5 text-sky-400" /> 時間帯別アクティビティ
+            </h2>
+            <div style={{ width: "100%", minHeight: 208 }}>
+              <ResponsiveContainer width="99%" height={208}>
+                <BarChart data={stats.hourly}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
+                  <XAxis dataKey="hour" axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10, fontWeight: "bold" }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10 }} />
+                  <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px" }} />
+                  <Bar dataKey="count" fill="#fb7185" radius={[6,6,0,0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ── アクティビティログ ────────────────────────────────────────────── */}
+          <ActivityLog calls={calls} />
+
         </div>
       </div>
-    </div>
+    </>
   );
 }
