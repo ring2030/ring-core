@@ -5,6 +5,9 @@ import { addDoc, collection, doc, serverTimestamp, updateDoc } from "firebase/fi
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
 import { ElderVideoLetterOverlay } from "@/components/kiyoko/ElderVideoLetterOverlay";
+import { EyedidCalibrationOverlay } from "@/components/kiyoko/EyedidCalibrationOverlay";
+import { useEyedidGaze } from "@/hooks/useEyedidGaze";
+import { CAL_TS_KEY, EYEDID_CAL_KEY } from "@/lib/gaze/eyedidStorage";
 
 // API ルートから import type すると Next.js のサーバー/クライアント境界を越えるため
 // 型だけここで定義する
@@ -14,15 +17,6 @@ interface TriageResponse {
   priority: number;
 }
 
-const CAL_POINTS = [
-  { rx: 0.1, ry: 0.12 },
-  { rx: 0.9, ry: 0.12 },
-  { rx: 0.5, ry: 0.5 },
-  { rx: 0.1, ry: 0.88 },
-  { rx: 0.9, ry: 0.88 },
-];
-const CAL_TS_KEY = "kiyoko_cal_ts";
-const CAL_MAP_KEY = "kiyoko_cal_map_v1";
 const CAL_TTL_MS = 24 * 60 * 60 * 1000;
 const SLEEP_TIMEOUT_MS = 10_000;
 
@@ -43,12 +37,16 @@ export default function GrandmaGazePage() {
   const [windowWidth, setWindowWidth] = useState(1000);
   const [windowHeight, setWindowHeight] = useState(700);
 
-  // キャリブレーション
-  const [isCalibrating, setIsCalibrating] = useState(true);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [calStep, setCalStep] = useState(0);
-  const calObservedXRef = useRef<(number | null)[]>(Array(CAL_POINTS.length).fill(null));
-  const gazeCorrectionRef = useRef<{ scale: number; offset: number } | null>(null);
+  // キャリブレーション（Eyedid SDK）。24h 以内かつ保存データありなら初回から省略
+  const [isCalibrating, setIsCalibrating] = useState(() => {
+    if (typeof window === "undefined") return true;
+    const ts = localStorage.getItem(CAL_TS_KEY);
+    const cal = localStorage.getItem(EYEDID_CAL_KEY);
+    if (ts && cal && Date.now() - parseInt(ts, 10) < CAL_TTL_MS) return false;
+    return true;
+  });
+  /** カメラ再起動・再キャリブレーションで増やし Eyedid を初期化し直す */
+  const [bootstrapVersion, setBootstrapVersion] = useState(0);
 
   // スリープモード
   const [isSleepMode, setIsSleepMode] = useState(false);
@@ -69,12 +67,12 @@ export default function GrandmaGazePage() {
   const isCalibrationRef = useRef(true);
   isCalibrationRef.current = isCalibrating;
 
-  // カメラ状態
+  // カメラ／SDK エラー表示用（Eyedid フックと併用）
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [iframeKey, setIframeKey] = useState(0); // 増やすと iframe を強制リロード
 
-  // gazePoint スロットル用（~25fps に間引き、無限ループ防止）
-  const lastGazeUpdateRef = useRef(0);
+  const onCalibrationComplete = useCallback(() => {
+    setIsCalibrating(false);
+  }, []);
 
   // スリープタイマーリセット（useEffect に依存しない安定した関数）
   // refs だけ使うので deps は空 → 毎レンダーで再生成されない
@@ -84,6 +82,30 @@ export default function GrandmaGazePage() {
     if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
     sleepTimerRef.current = setTimeout(() => setIsSleepMode(true), SLEEP_TIMEOUT_MS);
   }, []);
+
+  const onGazePointStable = useCallback((x: number, y: number) => {
+    setGazePoint({ x, y });
+    setCameraError(null);
+  }, []);
+
+  const {
+    licenseError: eyedidLicenseError,
+    initError: eyedidInitError,
+    blinkCount: eyedidBlinkCount,
+    attentionScore: eyedidAttention,
+    calUi,
+    skipCalibration,
+  } = useEyedidGaze({
+    isSleepMode,
+    isCalibrating,
+    bootstrapVersion,
+    onGazePoint: onGazePointStable,
+    onGazeActivity: resetSleepTimer,
+    onStatusMessage: setStatusMessage,
+    onCalibrationComplete,
+  });
+
+  const trackingError = eyedidLicenseError ?? eyedidInitError ?? null;
 
   useEffect(() => {
     setWindowWidth(window.innerWidth);
@@ -96,50 +118,10 @@ export default function GrandmaGazePage() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // 初回起動時：24時間以内にキャリブレーション済みならスキップ
+  // ライセンス未設定時はキャリブレーション UI を閉じてメッセージを見せる
   useEffect(() => {
-    const ts = localStorage.getItem(CAL_TS_KEY);
-    if (ts && Date.now() - parseInt(ts) < CAL_TTL_MS) {
-      setIsCalibrating(false);
-    }
-    const raw = localStorage.getItem(CAL_MAP_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw) as { scale?: number; offset?: number };
-        const scale = Number(parsed.scale);
-        const offset = Number(parsed.offset);
-        if (Number.isFinite(scale) && Number.isFinite(offset) && scale > 0) {
-          gazeCorrectionRef.current = { scale, offset };
-        }
-      } catch {
-        // ignore broken cache
-      }
-    }
-  }, []);
-
-  // 視線データ受信 ＋ スリープタイマーリセット
-  // ・~25fps にスロットルして setState の連打を防止（Maximum update depth 対策）
-  // ・タイマーリセットはここで直接行い、useEffect([gazePoint]) の連鎖を排除
-  useEffect(() => {
-    const THROTTLE_MS = 16; // iframe 側が 100ms に絞るので受信側は緩めに（滑らかさ優先）
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data.type === "GAZE_ERROR") {
-        setCameraError(event.data.message ?? "カメラエラーが発生しました");
-        setStatusMessage("カメラエラー");
-        return;
-      }
-      if (event.data.type !== "GAZE_UPDATE") return;
-      const now = Date.now();
-      if (now - lastGazeUpdateRef.current < THROTTLE_MS) return; // 間引き
-      lastGazeUpdateRef.current = now;
-      setCameraError(null); // データが来たらエラーをクリア
-      setGazePoint({ x: event.data.x, y: event.data.y });
-      setStatusMessage("視線を検知中...");
-      resetSleepTimer(); // ← useEffect 依存ではなく直接リセット
-    };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [resetSleepTimer]);
+    if (eyedidLicenseError) setIsCalibrating(false);
+  }, [eyedidLicenseError]);
 
   // ページ表示直後にもタイマーを開始（gaze が来る前にスリープさせるため）
   useEffect(() => {
@@ -154,12 +136,6 @@ export default function GrandmaGazePage() {
       sleepTimerRef.current = null;
     }
   }, [isSuccess]);
-
-  // isSleepMode 変化時に WebGazer の ML 推論を pause/resume（CPU 省電力）
-  useEffect(() => {
-    const msg = isSleepMode ? { type: "SLEEP" } : { type: "WAKE" };
-    iframeRef.current?.contentWindow?.postMessage(msg, "*");
-  }, [isSleepMode]);
 
   // スリープ解除：タッチ時にオーバーレイを消してタイマーを再開
   const handleWakeUp = () => {
@@ -182,16 +158,10 @@ export default function GrandmaGazePage() {
     const id = setInterval(() => {
       const { x, y } = gazeRef.current;
       if (x < 0) return;
-      let correctedX = x;
-      const correction = gazeCorrectionRef.current;
-      if (correction) {
-        correctedX = x * correction.scale + correction.offset;
-      }
       let hit: "トイレ" | "お話" | null = null;
       if (y > windowHeight * 0.1) {
-        // 右側が入りにくい端末向けに、デッドゾーンを少し狭くする
-        if (correctedX < windowWidth * 0.46) hit = "トイレ";
-        else if (correctedX > windowWidth * 0.52) hit = "お話";
+        if (x < windowWidth * 0.46) hit = "トイレ";
+        else if (x > windowWidth * 0.52) hit = "お話";
       }
       setTarget((prev) => (prev === hit ? prev : hit));
     }, 150);
@@ -526,50 +496,6 @@ export default function GrandmaGazePage() {
     setStatusMessage("視線を検知中...");
   };
 
-  // キャリブレーション点をクリック
-  const handleCalDotClick = () => {
-    const pt = CAL_POINTS[calStep];
-    const x = pt.rx * window.innerWidth;
-    const y = pt.ry * windowHeight;
-
-    // 各キャリブレーション点で、その瞬間の視線Xを記録して後で補正に利用
-    const observedX = gazeRef.current.x;
-    calObservedXRef.current[calStep] =
-      Number.isFinite(observedX) && observedX > 0 ? observedX : null;
-
-    for (let i = 0; i < 5; i++) {
-      iframeRef.current?.contentWindow?.postMessage({ type: "CALIBRATE", x, y }, "*");
-    }
-
-    const next = calStep + 1;
-    if (next >= CAL_POINTS.length) {
-      // 左右端の教育点から線形補正を作成（右側が認識されにくい問題を補正）
-      const leftCandidates = [calObservedXRef.current[0], calObservedXRef.current[3]].filter(
-        (v): v is number => typeof v === "number" && Number.isFinite(v),
-      );
-      const rightCandidates = [calObservedXRef.current[1], calObservedXRef.current[4]].filter(
-        (v): v is number => typeof v === "number" && Number.isFinite(v),
-      );
-      if (leftCandidates.length > 0 && rightCandidates.length > 0) {
-        const leftAvg = leftCandidates.reduce((a, b) => a + b, 0) / leftCandidates.length;
-        const rightAvg = rightCandidates.reduce((a, b) => a + b, 0) / rightCandidates.length;
-        const observedSpan = rightAvg - leftAvg;
-        if (observedSpan > 30) {
-          const targetSpan = windowWidth * 0.8; // 10%〜90% を想定
-          const rawScale = targetSpan / observedSpan;
-          const scale = Math.min(2.5, Math.max(0.5, rawScale));
-          const offset = windowWidth * 0.1 - leftAvg * scale;
-          gazeCorrectionRef.current = { scale, offset };
-          localStorage.setItem(CAL_MAP_KEY, JSON.stringify({ scale, offset }));
-        }
-      }
-      localStorage.setItem(CAL_TS_KEY, Date.now().toString());
-      setIsCalibrating(false);
-    } else {
-      setCalStep(next);
-    }
-  };
-
   return (
     <div className="relative min-h-screen bg-slate-900 font-sans overflow-hidden select-none flex flex-col items-center justify-center">
 
@@ -580,23 +506,6 @@ export default function GrandmaGazePage() {
           <span>タップで通知音を有効化</span>
         </div>
       )}
-
-      {/*
-        iframe を画面全体に広げる（透明）。
-        スリープ中は visibility:hidden で処理を軽減する。
-      */}
-      <iframe
-        key={iframeKey}
-        ref={iframeRef}
-        src="/gaze-core.html"
-        allow="camera"
-        className="fixed inset-0 w-full h-full border-0 pointer-events-none"
-        style={{
-          opacity: 0,
-          zIndex: 0,
-          visibility: isSleepMode ? "hidden" : "visible",
-        }}
-      />
 
       {/* スリープオーバーレイ（bg-black/95・再開ボタン付き） */}
       {isSleepMode && (
@@ -619,46 +528,9 @@ export default function GrandmaGazePage() {
         </div>
       )}
 
-      {/* キャリブレーション画面 */}
-      {isCalibrating && (
-        <div className="fixed inset-0 z-[9999] bg-slate-950/95 flex flex-col items-center justify-center">
-          <p className="text-3xl font-bold text-slate-100 mb-2">視線の教育</p>
-          <p className="text-lg text-cyan-400 mb-1">
-            この点を<strong>見ながら</strong>タップしてください — {calStep + 1} / {CAL_POINTS.length}
-          </p>
-          <p className="text-sm text-slate-500 mb-12">各点をタップするたびに精度が上がります</p>
-
-          <button
-            type="button"
-            onClick={handleCalDotClick}
-            className="fixed -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border-4 border-cyan-400 bg-white/10 flex items-center justify-center shadow-[0_0_30px_10px_rgba(34,211,238,0.4)] active:scale-95 transition"
-            style={{
-              left: CAL_POINTS[calStep].rx * windowWidth,
-              top: CAL_POINTS[calStep].ry * windowHeight,
-            }}
-          >
-            <span className="w-5 h-5 rounded-full bg-white block" />
-          </button>
-
-          <div className="fixed bottom-10 left-0 right-0 flex justify-center gap-3">
-            {CAL_POINTS.map((_, i) => (
-              <div
-                key={i}
-                className={`h-3 w-3 rounded-full transition-all duration-300 ${
-                  i < calStep ? "bg-cyan-400" : i === calStep ? "scale-125 bg-white" : "bg-slate-600"
-                }`}
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setIsCalibrating(false)}
-            className="fixed bottom-4 left-1/2 -translate-x-1/2 text-sm text-slate-500 underline"
-          >
-            スキップ（精度が下がります）
-          </button>
-        </div>
+      {/* Eyedid：1〜5点キャリブレーション（SDK が注視点を指示） */}
+      {isCalibrating && !eyedidLicenseError && (
+        <EyedidCalibrationOverlay calUi={calUi} onSkip={skipCalibration} />
       )}
 
       {/* 視線ハロー */}
@@ -724,23 +596,29 @@ export default function GrandmaGazePage() {
         </div>
       ) : !isCalibrating ? (
         <div className="w-full h-full px-12 flex flex-col items-center justify-center">
-          <div className="text-center absolute top-8 z-[10000] flex flex-col items-center gap-3">
-            <p className={`text-2xl font-bold inline-block px-8 py-3 rounded-full shadow-md border-2 ${
-              cameraError
-                ? "bg-red-900/90 text-red-300 border-red-700"
-                : "bg-slate-800/90 text-slate-400 border-slate-700"
-            }`}>
-              {cameraError ? `⚠️ ${cameraError}` : statusMessage}
+          <div className="text-center absolute top-8 z-[10000] flex max-w-[min(100%,42rem)] flex-col items-center gap-3 px-4">
+            <p
+              className={`text-lg font-bold inline-block px-6 py-3 rounded-full shadow-md border-2 sm:text-2xl sm:px-8 ${
+                trackingError || cameraError
+                  ? "bg-red-900/90 text-red-300 border-red-700"
+                  : "bg-slate-800/90 text-slate-400 border-slate-700"
+              }`}
+            >
+              {trackingError || cameraError
+                ? `⚠️ ${trackingError ?? cameraError}`
+                : statusMessage}
             </p>
-            {(cameraError || statusMessage === "カメラを準備しています...") && (
+            {(trackingError ||
+              cameraError ||
+              statusMessage === "カメラを準備しています...") && (
               <button
                 type="button"
                 onClick={() => {
                   setCameraError(null);
                   setStatusMessage("カメラを準備しています...");
-                  setIframeKey((k) => k + 1);
+                  setBootstrapVersion((k) => k + 1);
                 }}
-                className="text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 px-5 py-2 rounded-full border border-slate-500 transition"
+                className="text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 px-5 py-2 rounded-full border border-slate-500 transition touch-manipulation min-h-[44px]"
               >
                 📷 カメラを再起動
               </button>
@@ -751,16 +629,29 @@ export default function GrandmaGazePage() {
           <button
             type="button"
             onClick={() => {
-              localStorage.removeItem(CAL_TS_KEY);
-              setCalStep(0);
+              try {
+                localStorage.removeItem(CAL_TS_KEY);
+                localStorage.removeItem(EYEDID_CAL_KEY);
+              } catch {
+                /* ignore */
+              }
               setIsCalibrating(true);
+              setBootstrapVersion((k) => k + 1);
             }}
-            className="absolute top-8 right-8 z-[10000] text-xs text-slate-400 bg-slate-800/70 border border-slate-700 px-3 py-2 rounded-full shadow"
+            className="absolute top-8 right-8 z-[10000] text-xs text-slate-400 bg-slate-800/70 border border-slate-700 px-3 py-2 rounded-full shadow touch-manipulation min-h-[40px]"
           >
             再キャリブレーション
           </button>
 
-          <div className="flex flex-row gap-16 w-full h-[70vh] max-w-7xl mx-auto mt-16">
+          {/* Eyedid：まばたき・集中度（デバッグ／状態確認用） */}
+          {!trackingError && (
+            <div className="pointer-events-none fixed bottom-3 left-3 z-[10000] max-w-[min(100%,20rem)] rounded bg-black/55 px-2 py-1 font-mono text-[10px] text-slate-300 sm:text-xs">
+              まばたき累計: {eyedidBlinkCount} / 集中度:{" "}
+              {eyedidAttention != null ? eyedidAttention.toFixed(2) : "—"}
+            </div>
+          )}
+
+          <div className="flex flex-row gap-8 w-full h-[70vh] max-w-7xl mx-auto mt-16 max-[640px]:flex-col max-[640px]:gap-6 max-[640px]:h-auto max-[640px]:min-h-[50vh]">
             {/* トイレボタン */}
             <div
               className={`flex-1 rounded-[4rem] border-[12px] transition-all duration-300 relative overflow-hidden flex items-center justify-center ${

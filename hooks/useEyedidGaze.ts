@@ -1,0 +1,345 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { getEyedidLicenseKey } from "@/lib/gaze/eyedidLicense";
+import {
+  CAL_TS_KEY,
+  EYEDID_CAL_KEY,
+} from "@/lib/gaze/eyedidStorage";
+import type EasySeeSo from "seeso/easy-seeso";
+
+const CAL_TTL_MS = 24 * 60 * 60 * 1000;
+const GAZE_THROTTLE_MS = 16;
+
+export type EyedidCalibrationUi = {
+  /** SDK が指示する次の注視点（ブラウザ座標系） */
+  dot: { x: number; y: number } | null;
+  /** 0〜1 の進捗（SDK のキャリブレーション進行状況） */
+  progress: number;
+};
+
+export type UseEyedidGazeParams = {
+  /** 省電力モード中はカメラトラッキングを停止する */
+  isSleepMode: boolean;
+  /** キャリブレーション UI を表示すべきとき true（初回 or 再教育） */
+  isCalibrating: boolean;
+  /** カメラ・SDK を最初からやり直すたびに増やす */
+  bootstrapVersion: number;
+  /** 視線座標（画面ピクセル） */
+  onGazePoint: (x: number, y: number) => void;
+  /** 視線が来たときにスリープタイマーをリセットする */
+  onGazeActivity: () => void;
+  /** ステータス文言（例: 「視線を検知中…」） */
+  onStatusMessage: (msg: string) => void;
+  /** キャリブレーション完了時（データ保存済み） */
+  onCalibrationComplete: () => void;
+};
+
+export type UseEyedidGazeResult = {
+  licenseError: string | null;
+  initError: string | null;
+  /** まばたきが検出された回数（デバッグ用・累計） */
+  blinkCount: number;
+  /** 直近の集中度スコア（SDK 値。未受信時は null） */
+  attentionScore: number | null;
+  calUi: EyedidCalibrationUi;
+  /** キャリブレーションを中断（精度は下がります） */
+  skipCalibration: () => void;
+};
+
+/**
+ * Eyedid Web SDK（npm: seeso）で視線・まばたき・集中度を扱うフック。
+ * クライアント専用。サーバーでは何もしません。
+ */
+export function useEyedidGaze({
+  isSleepMode,
+  isCalibrating,
+  bootstrapVersion,
+  onGazePoint,
+  onGazeActivity,
+  onStatusMessage,
+  onCalibrationComplete,
+}: UseEyedidGazeParams): UseEyedidGazeResult {
+  const [licenseError, setLicenseError] = useState<string | null>(null);
+  const [initError, setInitError] = useState<string | null>(null);
+  const [blinkCount, setBlinkCount] = useState(0);
+  const [attentionScore, setAttentionScore] = useState<number | null>(null);
+  const [calUi, setCalUi] = useState<EyedidCalibrationUi>({
+    dot: null,
+    progress: 0,
+  });
+
+  const easyRef = useRef<EasySeeSo | null>(null);
+  const trackingActiveRef = useRef(false);
+  const lastGazeAtRef = useRef(0);
+  const calibratingRef = useRef(isCalibrating);
+  calibratingRef.current = isCalibrating;
+
+  const onGazePointRef = useRef(onGazePoint);
+  onGazePointRef.current = onGazePoint;
+  const onGazeActivityRef = useRef(onGazeActivity);
+  onGazeActivityRef.current = onGazeActivity;
+  const onStatusMessageRef = useRef(onStatusMessage);
+  onStatusMessageRef.current = onStatusMessage;
+  const onCalibrationCompleteRef = useRef(onCalibrationComplete);
+  onCalibrationCompleteRef.current = onCalibrationComplete;
+
+  const skipCalibration = useCallback(() => {
+    const easy = easyRef.current;
+    try {
+      easy?.stopCalibration();
+    } catch {
+      /* ignore */
+    }
+    setCalUi({ dot: null, progress: 0 });
+    onCalibrationCompleteRef.current();
+  }, []);
+
+  // ── メインの初期化・トラッキング・キャリブレーション ─────────────
+  useEffect(() => {
+    let cancelled = false;
+
+    async function bootstrap() {
+      setLicenseError(null);
+      setInitError(null);
+
+      const license = getEyedidLicenseKey();
+      if (!license) {
+        setLicenseError(
+          "Eyedid のライセンスキーが未設定です。.env.local に NEXT_PUBLIC_EYEDID_LICENSE_KEY を設定してください。",
+        );
+        onStatusMessageRef.current("ライセンス未設定");
+        return;
+      }
+
+      let EasySeeSoCtor: typeof import("seeso/easy-seeso").default;
+      let TrackingState: typeof import("seeso").TrackingState;
+      let UserStatusOption: typeof import("seeso").UserStatusOption;
+
+      try {
+        const [easyMod, seesoMod] = await Promise.all([
+          import("seeso/easy-seeso"),
+          import("seeso"),
+        ]);
+        if (cancelled) return;
+        EasySeeSoCtor = easyMod.default;
+        TrackingState = seesoMod.TrackingState;
+        UserStatusOption = seesoMod.UserStatusOption;
+      } catch (e) {
+        console.error("[Eyedid] SDK の読み込みに失敗しました", e);
+        if (!cancelled) {
+          setInitError("視線 SDK の読み込みに失敗しました。ページを再読み込みしてください。");
+        }
+        return;
+      }
+
+      const easy = new EasySeeSoCtor();
+      easyRef.current = easy;
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          void easy.init(
+            license,
+            () => resolve(),
+            () => reject(new Error("init_failed")),
+            new UserStatusOption(true, true, false),
+          );
+        });
+      } catch {
+        if (!cancelled) {
+          setInitError(
+            "Eyedid SDK の初期化に失敗しました。ライセンスキー・ネットワーク・時刻設定を確認してください。",
+          );
+          onStatusMessageRef.current("初期化エラー");
+        }
+        return;
+      }
+      if (cancelled) return;
+
+      easy.setUserStatusCallback(
+        (_tb, _te, score) => {
+          if (!cancelled) setAttentionScore(score);
+        },
+        (_tb, _te, isBlink) => {
+          if (isBlink && !cancelled) setBlinkCount((c) => c + 1);
+        },
+        () => {},
+      );
+
+      const runGaze = (gazeInfo: {
+        x: number;
+        y: number;
+        trackingState: number;
+      }) => {
+        if (gazeInfo.trackingState !== TrackingState.SUCCESS) return;
+        const now = Date.now();
+        if (now - lastGazeAtRef.current < GAZE_THROTTLE_MS) return;
+        lastGazeAtRef.current = now;
+        onGazePointRef.current(gazeInfo.x, gazeInfo.y);
+        onGazeActivityRef.current();
+        onStatusMessageRef.current("視線を検知中...");
+      };
+
+      try {
+        const ok = await easy.startTracking(runGaze, () => {});
+        if (!ok) {
+          if (!cancelled) {
+            setInitError("視線トラッキングを開始できませんでした。");
+          }
+          return;
+        }
+        trackingActiveRef.current = true;
+      } catch (e: unknown) {
+        const name = e instanceof Error ? e.name : "";
+        const msg =
+          name === "NotAllowedError" || name === "PermissionDeniedError"
+            ? "カメラの使用が拒否されました。ブラウザのアドレスバー横の設定でカメラを許可してください。"
+            : "カメラを起動できませんでした。接続と権限を確認してください。";
+        if (!cancelled) setInitError(msg);
+        console.error("[Eyedid] getUserMedia / startTracking", e);
+        return;
+      }
+      if (cancelled) return;
+
+      onStatusMessageRef.current("視線を準備しています...");
+
+      const cached = typeof localStorage !== "undefined"
+        ? localStorage.getItem(EYEDID_CAL_KEY)
+        : null;
+      const tsRaw = typeof localStorage !== "undefined"
+        ? localStorage.getItem(CAL_TS_KEY)
+        : null;
+      const fresh =
+        tsRaw != null &&
+        !Number.isNaN(parseInt(tsRaw, 10)) &&
+        Date.now() - parseInt(tsRaw, 10) < CAL_TTL_MS;
+
+      const needCalibration = calibratingRef.current;
+
+      if (cached && fresh && !needCalibration) {
+        try {
+          await easy.setCalibrationData(cached);
+        } catch (e) {
+          console.error("[Eyedid] setCalibrationData (cache)", e);
+        }
+        if (!cancelled) onCalibrationCompleteRef.current();
+        return;
+      }
+
+      // 1〜5 点キャリブレーション（SDK 組み込み）
+      setCalUi({ dot: null, progress: 0 });
+      const started = easy.startCalibration(
+        (bx, by) => {
+          if (!cancelled) setCalUi((u) => ({ ...u, dot: { x: bx, y: by } }));
+        },
+        (p) => {
+          if (!cancelled) {
+            const n = typeof p === "number" && Number.isFinite(p) ? Math.min(1, Math.max(0, p)) : 0;
+            setCalUi((u) => ({ ...u, progress: n }));
+          }
+        },
+        async (dataStr: string) => {
+          try {
+            await easy.setCalibrationData(dataStr);
+          } catch (e) {
+            console.error("[Eyedid] setCalibrationData (new)", e);
+          }
+          try {
+            localStorage.setItem(EYEDID_CAL_KEY, dataStr);
+            localStorage.setItem(CAL_TS_KEY, String(Date.now()));
+          } catch {
+            /* private mode 等 */
+          }
+          if (!cancelled) {
+            setCalUi({ dot: null, progress: 0 });
+            onCalibrationCompleteRef.current();
+          }
+        },
+        5,
+      );
+
+      if (!started && !cancelled) {
+        setInitError("キャリブレーションを開始できませんでした。");
+      }
+    }
+
+    void bootstrap();
+
+    return () => {
+      cancelled = true;
+      trackingActiveRef.current = false;
+      try {
+        easyRef.current?.stopTracking();
+      } catch {
+        /* ignore */
+      }
+      try {
+        easyRef.current?.deinit();
+      } catch {
+        /* ignore */
+      }
+      easyRef.current = null;
+    };
+  }, [bootstrapVersion]);
+
+  // ── スリープ：トラッキング停止／解除：再開 + キャッシュ済みキャリブレーション適用 ──
+  useEffect(() => {
+    async function sleepOrWake() {
+      const inst = easyRef.current;
+      if (!inst) return;
+
+      if (isSleepMode) {
+        try {
+          inst.stopTracking();
+        } catch {
+          /* ignore */
+        }
+        trackingActiveRef.current = false;
+        return;
+      }
+
+      if (trackingActiveRef.current) return;
+
+      let TrackingState: typeof import("seeso").TrackingState;
+      try {
+        const seesoMod = await import("seeso");
+        TrackingState = seesoMod.TrackingState;
+      } catch {
+        return;
+      }
+
+      const runGazeWake = (gazeInfo: { x: number; y: number; trackingState: number }) => {
+        if (gazeInfo.trackingState !== TrackingState.SUCCESS) return;
+        const now = Date.now();
+        if (now - lastGazeAtRef.current < GAZE_THROTTLE_MS) return;
+        lastGazeAtRef.current = now;
+        onGazePointRef.current(gazeInfo.x, gazeInfo.y);
+        onGazeActivityRef.current();
+        onStatusMessageRef.current("視線を検知中...");
+      };
+
+      try {
+        const ok = await inst.startTracking(runGazeWake, () => {});
+        if (!ok) return;
+        trackingActiveRef.current = true;
+        const cached = localStorage.getItem(EYEDID_CAL_KEY);
+        if (cached) {
+          await inst.setCalibrationData(cached);
+        }
+      } catch (e) {
+        console.error("[Eyedid] wake resume", e);
+      }
+    }
+
+    void sleepOrWake();
+  }, [isSleepMode]);
+
+  return {
+    licenseError,
+    initError,
+    blinkCount,
+    attentionScore,
+    calUi,
+    skipCalibration,
+  };
+}
