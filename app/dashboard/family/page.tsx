@@ -176,8 +176,9 @@ export default function FamilyDashboardPage() {
     let db;
     try {
       db = getFirestoreDb();
-    } catch (e: any) {
-      setFirestoreError(e.message ?? "Firestore 初期化に失敗しました");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Firestore 初期化に失敗しました";
+      setFirestoreError(msg);
       setLoading(false);
       return;
     }

@@ -1,0 +1,81 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\tools\run-verify.mjs
+  45:12  warning  'e' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 1 problem (0 errors, 1 warning)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> npm run lint:gaze && npm run test:run
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  6 passed (6)
+      Tests  23 passed (23)
+   Start at  21:25:22
+   Duration  949ms (transform 263ms, setup 0ms, import 391ms, tests 20ms, environment 4.24s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.6s
+  Running TypeScript ...
+  Finished TypeScript in 2.2s ...
+  Collecting page data using 13 workers ...
+  Generating static pages using 13 workers (0/12) ...
+  Generating static pages using 13 workers (3/12) 
+  Generating static pages using 13 workers (6/12) 
+  Generating static pages using 13 workers (9/12) 
+✓ Generating static pages using 13 workers (12/12) in 514ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /api/chat
+├ ƒ /api/family-summary
+├ ○ /dashboard
+├ ○ /dashboard/family
+├ ○ /dashboard/history
+├ ○ /dashboard/nurse
+├ ○ /kiyoko
+└ ○ /settings
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+--- [build] exit_code=0
+
+✅ run:verify passed in 13757ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-04-10T12-25-16-569Z.log

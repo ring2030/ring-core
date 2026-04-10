@@ -8,7 +8,6 @@ import {
   getDocs,
   query,
   orderBy,
-  deleteDoc,
 } from "firebase/firestore";
 
 // ─── Firebase ──────────────────────────────────────────────────────────────
@@ -123,7 +122,7 @@ export default function SeedDataButton() {
     try {
       // 1日あたりの件数分布
       const dailyCounts = [12, 14, 13, 16, 15, 18, 17]; // 合計 105
-      let batchDocs: { ts: Timestamp; tpl: Template }[] = [];
+      const batchDocs: { ts: Timestamp; tpl: Template }[] = [];
 
       dailyCounts.forEach((count, dayIdx) => {
         const daysAgo = 6 - dayIdx; // 6日前→今日
@@ -155,9 +154,10 @@ export default function SeedDataButton() {
       setStatus("done");
       setMessage(`✅ ${batchDocs.length} 件のデモデータを追加しました`);
       setTimeout(() => setStatus("idle"), 4000);
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       setStatus("error");
-      setMessage(`❌ エラー: ${e?.message ?? e}`);
+      setMessage(`❌ エラー: ${msg}`);
     }
   };
 
@@ -178,9 +178,10 @@ export default function SeedDataButton() {
       setStatus("done");
       setMessage(`🗑️ ${snap.docs.length} 件を削除しました`);
       setTimeout(() => setStatus("idle"), 3000);
-    } catch (e: any) {
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       setStatus("error");
-      setMessage(`❌ エラー: ${e?.message ?? e}`);
+      setMessage(`❌ エラー: ${msg}`);
     }
   };
 

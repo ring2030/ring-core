@@ -4,10 +4,17 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:node": "node ./node_modules/next/dist/bin/next dev",
     "dev:lan": "next dev --hostname 0.0.0.0",
+    "dev:lan:node": "node ./node_modules/next/dist/bin/next dev --hostname 0.0.0.0",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:gaze": "eslint \"lib/gaze/**/*.ts\" \"hooks/useEyedidGaze.ts\" \"components/kiyoko/EyedidCalibrationOverlay.tsx\"",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "run:quality": "npm run lint:gaze && npm run test:run",
+    "run:verify": "node ./tools/run-verify.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.46.0",
@@ -28,7 +35,9 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
+    "jsdom": "^29.0.2",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.4"
   }
 }

@@ -12,8 +12,14 @@ export interface FamilySummaryRequest {
   calls: CallSummaryItem[];
 }
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string") return error;
+  return String(error);
+}
+
 // Gemini に渡すプロンプトを組み立てる
-function buildPrompt(req: FamilySummaryRequest): string {
+export function buildPrompt(req: FamilySummaryRequest): string {
   const { date, calls } = req;
 
   if (calls.length === 0) {
@@ -96,16 +102,23 @@ export async function POST(req: Request) {
       throw new Error(`Gemini HTTP ${res.status}`);
     }
 
-    const data = await res.json();
+    const data = (await res.json()) as
+      | {
+          candidates?: Array<{
+            content?: { parts?: Array<{ text?: string }> };
+          }>;
+        }
+      | undefined;
     const text: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ??
       "今日もおばあちゃんは元気に過ごしていたよ。また連絡してあげてね！";
 
     return NextResponse.json({ text });
-  } catch (err: any) {
-    console.error("family-summary route error:", err?.message ?? err);
+  } catch (err: unknown) {
+    const message = toErrorMessage(err);
+    console.error("family-summary route error:", message);
     return NextResponse.json(
-      { error: err?.message ?? "不明なエラー" },
+      { error: message || "不明なエラー" },
       { status: 500 },
     );
   }

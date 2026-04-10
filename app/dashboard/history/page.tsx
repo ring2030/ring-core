@@ -14,7 +14,6 @@ import {
   AlertCircle,
   ChevronLeft,
   ChevronRight,
-  Clock,
   Heart,
   MessageCircle,
   Sparkles,
@@ -24,6 +23,7 @@ import {
   Sun,
   Sunset,
 } from "lucide-react";
+import { buildHighlight, dateLabel } from "@/lib/dashboard/historyUtils";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -59,11 +59,6 @@ function cardStyle(priority: number) {
 
 // ─── ユーティリティ ───────────────────────────────────────────────────────────
 
-function dateLabel(date: Date): string {
-  const weekday = ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日（${weekday}）`;
-}
-
 function startOf(date: Date): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -85,31 +80,6 @@ function TimeOfDayIcon({ hour }: { hour: number }) {
   if (hour >= 10 && hour < 17) return <Sun className="h-3.5 w-3.5 text-yellow-500" />;
   if (hour >= 17 && hour < 21) return <Sunset className="h-3.5 w-3.5 text-orange-400" />;
   return <Moon className="h-3.5 w-3.5 text-indigo-400" />;
-}
-
-// ─── AI日次ハイライト（動的生成） ────────────────────────────────────────────
-
-function buildHighlight(calls: CallDoc[], dateStr: string): string {
-  if (calls.length === 0) return `${dateStr}は記録がありませんでした。穏やかな一日だったようです。`;
-
-  const aiCount     = calls.filter((c) => c.priority <= 2).length;
-  const nurseCount  = calls.filter((c) => c.priority >= 3).length;
-  const urgentCount = calls.filter((c) => c.priority >= 4).length;
-
-  const reasons = [...new Set(calls.map((c) => c.reason))].slice(0, 3).join("・");
-  const total = calls.length;
-
-  let msg = `この日は ${total} 回、きよ子さんからお声がけがありました（${reasons} など）。`;
-
-  if (aiCount > 0 && nurseCount === 0) {
-    msg += ` すべてのご要望にAIがお答えし、きよ子さんは穏やかに過ごされていました。🌸`;
-  } else if (urgentCount > 0) {
-    msg += ` うち ${urgentCount} 件は急ぎの対応が必要で、みっちゃんがすぐに駆けつけました。安心してお任せください。`;
-  } else {
-    msg += ` AIが ${aiCount} 件のお話を聞き、みっちゃんが ${nurseCount} 件の介助をしました。しっかり見守っています。`;
-  }
-
-  return msg;
 }
 
 // ─── タイムラインカード ───────────────────────────────────────────────────────
@@ -172,22 +142,25 @@ export default function FamilyHistoryPage() {
   const [calls,        setCalls]        = useState<CallDoc[]>([]);
   const [loading,      setLoading]      = useState(true);
   const [error,        setError]        = useState<string | null>(null);
+  const dbResult = useMemo(() => {
+    try {
+      return { db: getFirestoreDb(), initError: null as string | null };
+    } catch (e: unknown) {
+      return {
+        db: null,
+        initError: e instanceof Error ? e.message : "Firestore 初期化に失敗しました",
+      };
+    }
+  }, []);
 
   // Firestore 購読
   useEffect(() => {
-    let db;
-    try { db = getFirestoreDb(); }
-    catch (e: any) {
-      setError(e.message ?? "Firestore 初期化に失敗しました");
-      setLoading(false);
+    if (!dbResult.db) {
       return;
     }
 
-    setLoading(true);
-    setCalls([]);
-
     const q = query(
-      collection(db, "calls"),
+      collection(dbResult.db, "calls"),
       where("送信日時", ">=", Timestamp.fromDate(startOf(selectedDate))),
       where("送信日時", "<=", Timestamp.fromDate(endOf(selectedDate))),
       orderBy("送信日時", "asc"),
@@ -215,12 +188,19 @@ export default function FamilyHistoryPage() {
     });
 
     return () => unsub();
-  }, [selectedDate]);
+  }, [selectedDate, dbResult]);
+  const fatalError = dbResult.initError ?? error;
 
   // 日付ナビ
-  const prevDay = () => setSelectedDate((d) => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
+  const prevDay = () => {
+    setLoading(true);
+    setCalls([]);
+    setSelectedDate((d) => { const n = new Date(d); n.setDate(n.getDate() - 1); return n; });
+  };
   const nextDay = () => {
     if (isToday(selectedDate)) return;
+    setLoading(true);
+    setCalls([]);
     setSelectedDate((d) => { const n = new Date(d); n.setDate(n.getDate() + 1); return n; });
   };
 
@@ -238,12 +218,12 @@ export default function FamilyHistoryPage() {
   );
 
   // ─── エラー ─────────────────────────────────────────────────────────────────
-  if (error) {
+  if (fatalError) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-rose-50 p-8">
         <div className="max-w-sm text-center">
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-400" />
-          <p className="mb-6 text-sm font-bold text-red-500">{error}</p>
+          <p className="mb-6 text-sm font-bold text-red-500">{fatalError}</p>
           <button
             onClick={() => window.location.reload()}
             className="rounded-xl bg-rose-500 px-6 py-3 font-bold text-white shadow-md hover:bg-rose-600 transition-colors"

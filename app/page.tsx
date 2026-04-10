@@ -8,7 +8,25 @@ import { useAudio } from "@/lib/useAudio";
 import { ElderVideoLetterOverlay } from "@/components/kiyoko/ElderVideoLetterOverlay";
 import { EyedidCalibrationOverlay } from "@/components/kiyoko/EyedidCalibrationOverlay";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
-import { CAL_TS_KEY, EYEDID_CAL_KEY } from "@/lib/gaze/eyedidStorage";
+import {
+  CAL_TS_KEY,
+  EYEDID_CAL_KEY,
+  hasFreshEyedidCalibration,
+} from "@/lib/gaze/eyedidStorage";
+import {
+  computeNextProgress,
+  INITIAL_TARGET_STABILITY,
+  selectGazeTarget,
+  stepTargetStability,
+  type TargetStabilityState,
+} from "@/lib/gaze/selection";
+import {
+  DEFAULT_GAZE_TUNING,
+  loadGazeTuning,
+  normalizeGazeTuning,
+  saveGazeTuning,
+  type GazeTuning,
+} from "@/lib/gaze/tuning";
 
 // API ルートから import type すると Next.js のサーバー/クライアント境界を越えるため
 // 型だけここで定義する
@@ -18,8 +36,31 @@ interface TriageResponse {
   priority: number;
 }
 
-const CAL_TTL_MS = 24 * 60 * 60 * 1000;
+type SpeechRecognitionResultLike = {
+  transcript?: string;
+};
+type SpeechRecognitionEventLike = {
+  results: ArrayLike<ArrayLike<SpeechRecognitionResultLike>>;
+};
+type SpeechRecognitionErrorEventLike = {
+  error?: string;
+};
+type SpeechRecognitionLike = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+};
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
+
 const SLEEP_TIMEOUT_MS = 10_000;
+const TARGET_SCAN_MS = 120;
+const PROGRESS_TICK_MS = 120;
 
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });
@@ -37,15 +78,28 @@ export default function GrandmaGazePage() {
 
   const [windowWidth, setWindowWidth] = useState(1000);
   const [windowHeight, setWindowHeight] = useState(700);
+  const [gazeTuning, setGazeTuning] = useState<GazeTuning>(DEFAULT_GAZE_TUNING);
+  const [showTuning, setShowTuning] = useState(false);
 
-  // キャリブレーション（Eyedid SDK）。24h 以内かつ保存データありなら初回から省略
-  const [isCalibrating, setIsCalibrating] = useState(() => {
-    if (typeof window === "undefined") return true;
-    const ts = localStorage.getItem(CAL_TS_KEY);
-    const cal = localStorage.getItem(EYEDID_CAL_KEY);
-    if (ts && cal && Date.now() - parseInt(ts, 10) < CAL_TTL_MS) return false;
-    return true;
-  });
+  // キャリブ／カメラゲートは localStorage 依存のため、SSR と同じ初期値にしてハイドレーションずれを防ぐ
+  const [gazeHydrated, setGazeHydrated] = useState(false);
+  const [isCalibrating, setIsCalibrating] = useState(true);
+  /** キャリブ画面では「カメラを開始」タップ後に true（キャリブ済みでメインだけのときも true） */
+  const [cameraSessionStarted, setCameraSessionStarted] = useState(false);
+  const [cameraGateError, setCameraGateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fresh = hasFreshEyedidCalibration();
+    setIsCalibrating(!fresh);
+    setCameraSessionStarted(fresh);
+    setGazeTuning(loadGazeTuning());
+    setGazeHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!gazeHydrated) return;
+    saveGazeTuning(gazeTuning);
+  }, [gazeHydrated, gazeTuning]);
   /** カメラ再起動・再キャリブレーションで増やし Eyedid を初期化し直す */
   const [bootstrapVersion, setBootstrapVersion] = useState(0);
 
@@ -89,6 +143,10 @@ export default function GrandmaGazePage() {
     setCameraError(null);
   }, []);
 
+  /** メイン画面（キャリブ不要）では常に起動。キャリブ画面では「カメラを開始」後だけ起動 */
+  const eyedidEnabled =
+    gazeHydrated && (!isCalibrating || cameraSessionStarted);
+
   const {
     licenseError: eyedidLicenseError,
     initError: eyedidInitError,
@@ -104,7 +162,31 @@ export default function GrandmaGazePage() {
     onGazeActivity: resetSleepTimer,
     onStatusMessage: setStatusMessage,
     onCalibrationComplete,
+    enabled: eyedidEnabled,
   });
+
+  /** ユーザー操作の直列で getUserMedia し、その後 SDK が同じ権限で起動しやすくする */
+  const handleCameraStart = useCallback(async () => {
+    setCameraGateError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user" },
+      });
+      stream.getTracks().forEach((t) => t.stop());
+      setCameraSessionStarted(true);
+    } catch (e: unknown) {
+      const name = e instanceof Error ? e.name : "";
+      if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+        setCameraGateError(
+          "カメラの使用が拒否されました。アドレスバー横の鍵アイコンから「許可」にしてください。",
+        );
+      } else {
+        setCameraGateError(
+          "カメラを起動できませんでした。カメラの接続とブラウザの設定を確認してください。",
+        );
+      }
+    }
+  }, []);
 
   const trackingError = eyedidLicenseError ?? eyedidInitError ?? null;
 
@@ -124,11 +206,14 @@ export default function GrandmaGazePage() {
     if (eyedidLicenseError) setIsCalibrating(false);
   }, [eyedidLicenseError]);
 
-  // ページ表示直後にもタイマーを開始（gaze が来る前にスリープさせるため）
+  // 省電力タイマーは「視線が来たとき」（onGazeActivity）と「スリープ解除後」だけで開始する。
+  // マウント直後に開始すると、キャリブ済みユーザーが SDK 起動前に 10 秒でスリープし
+  // stopTracking されて視線が止まるため、ここでは開始しない。
   useEffect(() => {
-    resetSleepTimer();
-    return () => { if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current); };
-  }, [resetSleepTimer]);
+    return () => {
+      if (sleepTimerRef.current) clearTimeout(sleepTimerRef.current);
+    };
+  }, []);
 
   // isSuccess が true（送信中/AI会話中）になったらタイマーを即クリア
   useEffect(() => {
@@ -150,6 +235,7 @@ export default function GrandmaGazePage() {
   // target の最新値を updater 外から参照するための ref
   const targetRef = useRef<"トイレ" | "お話" | null>(null);
   targetRef.current = target;
+  const targetStabilityRef = useRef<TargetStabilityState>(INITIAL_TARGET_STABILITY);
   // 二重送信防止フラグ
   const hasSubmittedRef = useRef(false);
   const conversationTurnRef = useRef(0);
@@ -158,28 +244,45 @@ export default function GrandmaGazePage() {
     if (isSuccess || isCalibrating || isSleepMode) return;
     const id = setInterval(() => {
       const { x, y } = gazeRef.current;
-      if (x < 0) return;
-      let hit: "トイレ" | "お話" | null = null;
-      if (y > windowHeight * 0.1) {
-        if (x < windowWidth * 0.46) hit = "トイレ";
-        else if (x > windowWidth * 0.52) hit = "お話";
-      }
-      setTarget((prev) => (prev === hit ? prev : hit));
-    }, 150);
+      const rawHit = selectGazeTarget({
+        x,
+        y,
+        width: windowWidth,
+        height: windowHeight,
+        leftThresholdRatio: gazeTuning.leftThresholdRatio,
+        rightThresholdRatio: gazeTuning.rightThresholdRatio,
+      });
+      targetStabilityRef.current = stepTargetStability(targetStabilityRef.current, rawHit, {
+        confirmFrames: gazeTuning.confirmFrames,
+        releaseFrames: gazeTuning.releaseFrames,
+      });
+      const next = targetStabilityRef.current.locked;
+      setTarget((prev) => (prev === next ? prev : next));
+    }, TARGET_SCAN_MS);
     return () => clearInterval(id);
-  }, [isSuccess, isCalibrating, isSleepMode, windowWidth, windowHeight]);
+  }, [isSuccess, isCalibrating, isSleepMode, windowWidth, windowHeight, gazeTuning]);
 
-  // 激甘ゲージ（updater は純粋に数値だけ更新。submitCall はここで呼ばない）
+  useEffect(() => {
+    if (!isSuccess && !isCalibrating && !isSleepMode) return;
+    targetStabilityRef.current = INITIAL_TARGET_STABILITY;
+    setTarget(null);
+  }, [isSuccess, isCalibrating, isSleepMode]);
+
+  // 滞留ゲージ（updater は純粋に数値だけ更新。submitCall はここで呼ばない）
   useEffect(() => {
     if (isSuccess || isCalibrating || isSleepMode) return;
     const interval = setInterval(() => {
-      setProgress((prev) => {
-        if (target) return Math.min(prev + 10, 100);
-        return Math.max(0, prev - 1);
-      });
-    }, 100);
+      setProgress((prev) =>
+        computeNextProgress(
+          prev,
+          Boolean(target),
+          gazeTuning.risePerTick,
+          gazeTuning.fallPerTick,
+        ),
+      );
+    }, PROGRESS_TICK_MS);
     return () => clearInterval(interval);
-  }, [target, isSuccess, isCalibrating, isSleepMode]);
+  }, [target, isSuccess, isCalibrating, isSleepMode, gazeTuning]);
 
   // progress が 100 に達したら submitCall を起動（updater の外で呼ぶことで二重呼び出しを防止）
   useEffect(() => {
@@ -203,8 +306,11 @@ export default function GrandmaGazePage() {
   useEffect(() => {
     if (!isSuccess || sentReason !== "お話") return;
 
-    // @ts-ignore
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const w = window as Window & {
+      SpeechRecognition?: SpeechRecognitionCtor;
+      webkitSpeechRecognition?: SpeechRecognitionCtor;
+    };
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
     const recognition = SR ? new SR() : null;
     const synth = window.speechSynthesis;
 
@@ -378,7 +484,7 @@ export default function GrandmaGazePage() {
       recognition.continuous = false;  // 1 発話ずつ区切り、デバウンスで結合
       recognition.interimResults = false;
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEventLike) => {
         if (!mounted || !shouldContinueConversation || thinking) return;
 
         // 発話があったので 15 秒タイムアウトをリセット
@@ -428,7 +534,7 @@ export default function GrandmaGazePage() {
         }
       };
 
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: SpeechRecognitionErrorEventLike) => {
         if (event.error === "not-allowed") {
           speakAndListen("マイクの許可が必要です。ブラウザの設定をご確認ください。");
           return;
@@ -477,7 +583,7 @@ export default function GrandmaGazePage() {
         送信日時: serverTimestamp(),
       });
       currentCallIdRef.current = docRef.id;
-    } catch (err) {}
+    } catch {}
 
     if (reason === "トイレ") {
       setTimeout(() => resetToMain(), 5000);
@@ -496,6 +602,14 @@ export default function GrandmaGazePage() {
     setGazePoint({ x: -100, y: -100 });
     setStatusMessage("視線を検知中...");
   };
+
+  if (!gazeHydrated) {
+    return (
+      <div className="relative min-h-screen bg-slate-900 font-sans overflow-hidden select-none flex flex-col items-center justify-center">
+        <p className="text-slate-400 text-xl">読み込み中…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen bg-slate-900 font-sans overflow-hidden select-none flex flex-col items-center justify-center">
@@ -531,7 +645,17 @@ export default function GrandmaGazePage() {
 
       {/* Eyedid：1〜5点キャリブレーション（SDK が注視点を指示） */}
       {isCalibrating && !eyedidLicenseError && (
-        <EyedidCalibrationOverlay calUi={calUi} onSkip={skipCalibration} />
+        <EyedidCalibrationOverlay
+          calUi={calUi}
+          onSkip={skipCalibration}
+          errorText={cameraGateError ?? trackingError}
+          showCameraGate={!cameraSessionStarted}
+          onCameraStart={handleCameraStart}
+          onRetrySdk={() => {
+            setCameraGateError(null);
+            setBootstrapVersion((k) => k + 1);
+          }}
+        />
       )}
 
       {/* 視線ハロー */}
@@ -626,7 +750,7 @@ export default function GrandmaGazePage() {
             )}
           </div>
 
-          {/* 再キャリブレーションボタン */}
+          {/* 再キャリブレーションボタン（タップ＝ユーザー操作として getUserMedia を先に通す） */}
           <button
             type="button"
             onClick={() => {
@@ -636,6 +760,8 @@ export default function GrandmaGazePage() {
               } catch {
                 /* ignore */
               }
+              setCameraGateError(null);
+              setCameraSessionStarted(false);
               setIsCalibrating(true);
               setBootstrapVersion((k) => k + 1);
             }}
@@ -643,6 +769,107 @@ export default function GrandmaGazePage() {
           >
             再キャリブレーション
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowTuning((v) => !v)}
+            className="absolute top-8 left-8 z-[10000] text-xs text-slate-400 bg-slate-800/70 border border-slate-700 px-3 py-2 rounded-full shadow touch-manipulation min-h-[40px]"
+          >
+            視線チューニング
+          </button>
+
+          {showTuning && (
+            <div className="absolute left-8 top-20 z-[10000] w-[min(26rem,calc(100vw-4rem))] rounded-2xl border border-slate-700 bg-slate-900/95 p-4 text-xs text-slate-200 shadow-2xl backdrop-blur">
+              <p className="mb-3 font-bold">誤反応を減らす調整（自動保存）</p>
+              <div className="space-y-3">
+                <label className="block">
+                  <span>左判定の広さ: {(gazeTuning.leftThresholdRatio * 100).toFixed(0)}%</span>
+                  <input
+                    type="range"
+                    min={20}
+                    max={49}
+                    value={Math.round(gazeTuning.leftThresholdRatio * 100)}
+                    onChange={(e) =>
+                      setGazeTuning((t) =>
+                        normalizeGazeTuning({ ...t, leftThresholdRatio: Number(e.target.value) / 100 }),
+                      )
+                    }
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  <span>右判定の広さ: {(gazeTuning.rightThresholdRatio * 100).toFixed(0)}%</span>
+                  <input
+                    type="range"
+                    min={51}
+                    max={80}
+                    value={Math.round(gazeTuning.rightThresholdRatio * 100)}
+                    onChange={(e) =>
+                      setGazeTuning((t) =>
+                        normalizeGazeTuning({ ...t, rightThresholdRatio: Number(e.target.value) / 100 }),
+                      )
+                    }
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  <span>確定までの連続フレーム: {gazeTuning.confirmFrames}</span>
+                  <input
+                    type="range"
+                    min={2}
+                    max={10}
+                    value={gazeTuning.confirmFrames}
+                    onChange={(e) =>
+                      setGazeTuning((t) => normalizeGazeTuning({ ...t, confirmFrames: Number(e.target.value) }))
+                    }
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  <span>見失いで解除するフレーム: {gazeTuning.releaseFrames}</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={8}
+                    value={gazeTuning.releaseFrames}
+                    onChange={(e) =>
+                      setGazeTuning((t) => normalizeGazeTuning({ ...t, releaseFrames: Number(e.target.value) }))
+                    }
+                    className="mt-1 w-full"
+                  />
+                </label>
+                <label className="block">
+                  <span>ゲージ上昇速度: +{gazeTuning.risePerTick}</span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    value={gazeTuning.risePerTick}
+                    onChange={(e) =>
+                      setGazeTuning((t) => normalizeGazeTuning({ ...t, risePerTick: Number(e.target.value) }))
+                    }
+                    className="mt-1 w-full"
+                  />
+                </label>
+              </div>
+              <div className="mt-4 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setGazeTuning(DEFAULT_GAZE_TUNING)}
+                  className="rounded-full border border-slate-600 px-3 py-1"
+                >
+                  既定値に戻す
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTuning(false)}
+                  className="rounded-full bg-cyan-700 px-3 py-1 text-cyan-50"
+                >
+                  閉じる
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Eyedid：まばたき・集中度（デバッグ／状態確認用） */}
           {!trackingError && (

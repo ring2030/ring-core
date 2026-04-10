@@ -40,7 +40,13 @@ declare module "seeso" {
     blink: boolean,
     drowsiness: boolean,
   ) => { getUserStatusOptions(): unknown[] };
-  export const InitializationErrorType: Record<string, number>;
+  export const InitializationErrorType: {
+    ERROR_NONE: number;
+    AUTH_INVALID_KEY: number;
+    AUTH_INVALID_ENV_USED_DEV_IN_PROD: number;
+    AUTH_INVALID_ENV_USED_PROD_IN_DEV: number;
+    [key: string]: number;
+  };
   const Seeso: unknown;
   export default Seeso;
 }

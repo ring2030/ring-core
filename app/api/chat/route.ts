@@ -53,7 +53,7 @@ const FALLBACK: TriageResponse = {
 };
 let apiBackoffUntil = 0;
 
-function localTriage(message: string): TriageResponse {
+export function localTriage(message: string): TriageResponse {
   const text = String(message ?? "").replace(/\s+/g, "");
 
   // ── 緊急度5: 痛み・外傷・救助要請 ────────────────────────────────
@@ -162,10 +162,25 @@ type GeminiAttemptResult = {
   ok: boolean;
   status: number;
   bodyText: string;
-  data?: any;
+  data?: unknown;
   model: string;
   base: string;
 };
+
+type RetryInfoDetail = { "@type"?: string; retryDelay?: string };
+type QuotaViolation = { quotaId?: string };
+type QuotaFailureDetail = { "@type"?: string; violations?: QuotaViolation[] };
+type GeminiErrorEnvelope = { error?: { details?: unknown[] } };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string") return error;
+  return String(error);
+}
 
 async function tryGeminiGenerate(params: {
   apiKey: string;
@@ -240,9 +255,12 @@ async function tryGeminiGenerate(params: {
           signal: controller.signal,
           body: JSON.stringify(requestBody),
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         clearTimeout(timeout);
-        const errMsg = e?.name === "AbortError" ? "request timeout (12s超過)" : String(e?.message ?? e);
+        const errMsg =
+          e instanceof Error && e.name === "AbortError"
+            ? "request timeout (12s超過)"
+            : toErrorMessage(e);
         console.error(`[Gemini] fetch失敗:`, errMsg);
         lastError = {
           ok: false,
@@ -257,7 +275,7 @@ async function tryGeminiGenerate(params: {
       const bodyText = await res.text();
       console.log(`[Gemini] レスポンス HTTP ${res.status}:`, bodyText.slice(0, 400));
       if (res.ok) {
-        let data: any = {};
+        let data: unknown = {};
         try {
           data = JSON.parse(bodyText);
         } catch {
@@ -328,20 +346,26 @@ export async function POST(req: Request) {
         // Gemini が教えてくれる retryDelay を尊重し、日次枠切れは長期停止する
         let backoffMs = 90_000; // デフォルト90秒
         try {
-          const errJson = JSON.parse(result.bodyText);
-          const details: any[] = errJson?.error?.details ?? [];
+          const errJson = JSON.parse(result.bodyText) as GeminiErrorEnvelope;
+          const details = Array.isArray(errJson?.error?.details)
+            ? errJson.error.details
+            : [];
 
           // retryDelay フィールドをパース（例: "25s" → 25000ms）
-          const retryInfo = details.find((d) => d["@type"]?.includes("RetryInfo"));
+          const retryInfo = details.find((d): d is RetryInfoDetail => {
+            return isRecord(d) && typeof d["@type"] === "string" && d["@type"].includes("RetryInfo");
+          });
           if (retryInfo?.retryDelay) {
             const secs = parseFloat(String(retryInfo.retryDelay).replace(/[^0-9.]/g, ""));
             if (!isNaN(secs) && secs > 0) backoffMs = (secs + 10) * 1000; // +10s バッファ
           }
 
           // 日次枠切れ（GenerateRequestsPerDayPerProjectPerModel）は当日中使わない
-          const quotaFailure = details.find((d) => d["@type"]?.includes("QuotaFailure"));
+          const quotaFailure = details.find((d): d is QuotaFailureDetail => {
+            return isRecord(d) && typeof d["@type"] === "string" && d["@type"].includes("QuotaFailure");
+          });
           const isDailyExhausted = (quotaFailure?.violations ?? []).some(
-            (v: any) => v.quotaId === "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+            (v) => v.quotaId === "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
           );
           if (isDailyExhausted) {
             // 翌日の 00:00 (UTC+9) まで停止（最短6時間を保証）
@@ -370,7 +394,13 @@ export async function POST(req: Request) {
       return NextResponse.json(local satisfies TriageResponse);
     }
 
-    const data = result.data;
+    const data = result.data as
+      | {
+          candidates?: Array<{
+            content?: { parts?: Array<{ text?: string }> };
+          }>;
+        }
+      | undefined;
     const rawText: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "{}";
 
@@ -391,8 +421,8 @@ export async function POST(req: Request) {
     console.log(`[API /chat] 最終レスポンス (Gemini成功):`, triage);
     console.log(`====== [API /chat] 完了 ======\n`);
     return NextResponse.json(triage satisfies TriageResponse);
-  } catch (error: any) {
-    console.error(`[API /chat] 例外発生:`, error?.message ?? error);
+  } catch (error: unknown) {
+    console.error(`[API /chat] 例外発生:`, toErrorMessage(error));
     const local = localTriage(message);
     console.log(`[API /chat] localTriage結果 (例外):`, local);
     return NextResponse.json(local satisfies TriageResponse);

@@ -6,7 +6,21 @@ import {
   CAL_TS_KEY,
   EYEDID_CAL_KEY,
 } from "@/lib/gaze/eyedidStorage";
+import { describeEyedidInitError } from "@/lib/gaze/eyedidInitMessage";
 import type EasySeeSo from "seeso/easy-seeso";
+
+/** easy-seeso 内部の seeso インスタンスへアクセスし、errCode を取得するための型 */
+type EasySeeSoInternal = EasySeeSo & {
+  seeso: {
+    initialize: (licenseKey: string, opt: unknown) => Promise<number>;
+    addCalibrationFinishCallback: (fn: unknown) => void;
+    addGazeCallback: (fn: unknown) => void;
+  };
+  onCalibrationFinished_: (calibrationData: string) => void;
+  onGaze_: (gazeInfo: unknown) => void;
+  onCalibrationFinishedBind: unknown;
+  onGazeBind: unknown;
+};
 
 const CAL_TTL_MS = 24 * 60 * 60 * 1000;
 const GAZE_THROTTLE_MS = 16;
@@ -33,6 +47,11 @@ export type UseEyedidGazeParams = {
   onStatusMessage: (msg: string) => void;
   /** キャリブレーション完了時（データ保存済み） */
   onCalibrationComplete: () => void;
+  /**
+   * false の間は SDK を起動しない。
+   * 初回キャリブ前はユーザー操作（ボタン）後に true にし、getUserMedia を確実に許可させる。
+   */
+  enabled?: boolean;
 };
 
 export type UseEyedidGazeResult = {
@@ -59,6 +78,7 @@ export function useEyedidGaze({
   onGazeActivity,
   onStatusMessage,
   onCalibrationComplete,
+  enabled = true,
 }: UseEyedidGazeParams): UseEyedidGazeResult {
   const [licenseError, setLicenseError] = useState<string | null>(null);
   const [initError, setInitError] = useState<string | null>(null);
@@ -97,6 +117,10 @@ export function useEyedidGaze({
 
   // ── メインの初期化・トラッキング・キャリブレーション ─────────────
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     let cancelled = false;
 
     async function bootstrap() {
@@ -115,6 +139,7 @@ export function useEyedidGaze({
       let EasySeeSoCtor: typeof import("seeso/easy-seeso").default;
       let TrackingState: typeof import("seeso").TrackingState;
       let UserStatusOption: typeof import("seeso").UserStatusOption;
+      let InitializationErrorType: typeof import("seeso").InitializationErrorType;
 
       try {
         const [easyMod, seesoMod] = await Promise.all([
@@ -125,6 +150,7 @@ export function useEyedidGaze({
         EasySeeSoCtor = easyMod.default;
         TrackingState = seesoMod.TrackingState;
         UserStatusOption = seesoMod.UserStatusOption;
+        InitializationErrorType = seesoMod.InitializationErrorType;
       } catch (e) {
         console.error("[Eyedid] SDK の読み込みに失敗しました", e);
         if (!cancelled) {
@@ -135,25 +161,37 @@ export function useEyedidGaze({
 
       const easy = new EasySeeSoCtor();
       easyRef.current = easy;
+      const ez = easy as unknown as EasySeeSoInternal;
 
+      const userOpt = new UserStatusOption(true, true, false);
+      let errCode: number;
       try {
-        await new Promise<void>((resolve, reject) => {
-          void easy.init(
-            license,
-            () => resolve(),
-            () => reject(new Error("init_failed")),
-            new UserStatusOption(true, true, false),
-          );
-        });
-      } catch {
+        errCode = await ez.seeso.initialize(license, userOpt);
+      } catch (e) {
+        console.error("[Eyedid] initialize が例外を投げました", e);
         if (!cancelled) {
           setInitError(
-            "Eyedid SDK の初期化に失敗しました。ライセンスキー・ネットワーク・時刻設定を確認してください。",
+            "Eyedid SDK の初期化処理で通信エラーが発生しました。ネットワークを確認してください。",
           );
           onStatusMessageRef.current("初期化エラー");
         }
         return;
       }
+
+      if (errCode !== InitializationErrorType.ERROR_NONE) {
+        console.warn("[Eyedid] initialize errCode =", errCode);
+        if (!cancelled) {
+          setInitError(describeEyedidInitError(errCode));
+          onStatusMessageRef.current("初期化エラー");
+        }
+        return;
+      }
+
+      ez.onCalibrationFinishedBind = ez.onCalibrationFinished_.bind(easy);
+      ez.seeso.addCalibrationFinishCallback(ez.onCalibrationFinishedBind);
+      ez.onGazeBind = ez.onGaze_.bind(easy);
+      ez.seeso.addGazeCallback(ez.onGazeBind);
+
       if (cancelled) return;
 
       easy.setUserStatusCallback(
@@ -166,12 +204,17 @@ export function useEyedidGaze({
         () => {},
       );
 
+      /** SUCCESS だけでなく LOW_CONFIDENCE も採用（実機では後者の方が多い） */
+      const isUsableTracking = (ts: number) =>
+        ts === TrackingState.SUCCESS || ts === TrackingState.LOW_CONFIDENCE;
+
       const runGaze = (gazeInfo: {
         x: number;
         y: number;
         trackingState: number;
       }) => {
-        if (gazeInfo.trackingState !== TrackingState.SUCCESS) return;
+        if (!isUsableTracking(gazeInfo.trackingState)) return;
+        if (!Number.isFinite(gazeInfo.x) || !Number.isFinite(gazeInfo.y)) return;
         const now = Date.now();
         if (now - lastGazeAtRef.current < GAZE_THROTTLE_MS) return;
         lastGazeAtRef.current = now;
@@ -280,7 +323,7 @@ export function useEyedidGaze({
       }
       easyRef.current = null;
     };
-  }, [bootstrapVersion]);
+  }, [bootstrapVersion, enabled]);
 
   // ── スリープ：トラッキング停止／解除：再開 + キャッシュ済みキャリブレーション適用 ──
   useEffect(() => {
@@ -309,7 +352,9 @@ export function useEyedidGaze({
       }
 
       const runGazeWake = (gazeInfo: { x: number; y: number; trackingState: number }) => {
-        if (gazeInfo.trackingState !== TrackingState.SUCCESS) return;
+        const ts = gazeInfo.trackingState;
+        if (ts !== TrackingState.SUCCESS && ts !== TrackingState.LOW_CONFIDENCE) return;
+        if (!Number.isFinite(gazeInfo.x) || !Number.isFinite(gazeInfo.y)) return;
         const now = Date.now();
         if (now - lastGazeAtRef.current < GAZE_THROTTLE_MS) return;
         lastGazeAtRef.current = now;

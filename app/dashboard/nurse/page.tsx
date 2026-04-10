@@ -92,9 +92,8 @@ const REASON_EMOJI: Record<string, string> = {
   "寒い": "🥶", "体位を変えて": "🛏️",
 };
 
-const PIE_COLORS: Record<string, string> = {
-  "トイレ": "#fb923c", "お話": "#60a5fa", "痛い": "#f87171",
-  "寂しい": "#c084fc", "その他": "#94a3b8",
+type AudioWindow = Window & {
+  webkitAudioContext?: typeof AudioContext;
 };
 
 // ─── Toast 型 ─────────────────────────────────────────────────────────────────
@@ -113,13 +112,18 @@ export default function NurseDashboard() {
 
   const isInitialLoad     = useRef(true);
   const isAudioEnabledRef = useRef(false);
-  isAudioEnabledRef.current = isAudioEnabled;
+  useEffect(() => {
+    isAudioEnabledRef.current = isAudioEnabled;
+  }, [isAudioEnabled]);
 
   // ── チャイム ──────────────────────────────────────────────────────────────
   const playChime = useCallback((urgent: boolean) => {
     if (!isAudioEnabledRef.current) return;
     try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const aw = window as AudioWindow;
+      const Ctx = globalThis.AudioContext || aw.webkitAudioContext;
+      if (!Ctx) return;
+      const ctx = new Ctx();
       if (urgent) {
         [0, 0.32, 0.64].forEach((offset) => {
           const osc = ctx.createOscillator(); const gain = ctx.createGain();
