@@ -14,7 +14,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "run:quality": "npm run lint:gaze && npm run test:run",
-    "run:verify": "node ./tools/run-verify.mjs"
+    "run:verify": "node ./tools/run-verify.mjs",
+    "run:auto": "node ./tools/auto-run.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.46.0",

@@ -61,6 +61,8 @@ export type UseEyedidGazeResult = {
   blinkCount: number;
   /** 直近の集中度スコア（SDK 値。未受信時は null） */
   attentionScore: number | null;
+  /** 直近のトラッキング状態（SDK TrackingState の生値） */
+  trackingState: number | null;
   calUi: EyedidCalibrationUi;
   /** キャリブレーションを中断（精度は下がります） */
   skipCalibration: () => void;
@@ -84,6 +86,7 @@ export function useEyedidGaze({
   const [initError, setInitError] = useState<string | null>(null);
   const [blinkCount, setBlinkCount] = useState(0);
   const [attentionScore, setAttentionScore] = useState<number | null>(null);
+  const [trackingState, setTrackingState] = useState<number | null>(null);
   const [calUi, setCalUi] = useState<EyedidCalibrationUi>({
     dot: null,
     progress: 0,
@@ -213,6 +216,7 @@ export function useEyedidGaze({
         y: number;
         trackingState: number;
       }) => {
+        if (!cancelled) setTrackingState(gazeInfo.trackingState);
         if (!isUsableTracking(gazeInfo.trackingState)) return;
         if (!Number.isFinite(gazeInfo.x) || !Number.isFinite(gazeInfo.y)) return;
         const now = Date.now();
@@ -352,6 +356,7 @@ export function useEyedidGaze({
       }
 
       const runGazeWake = (gazeInfo: { x: number; y: number; trackingState: number }) => {
+        setTrackingState(gazeInfo.trackingState);
         const ts = gazeInfo.trackingState;
         if (ts !== TrackingState.SUCCESS && ts !== TrackingState.LOW_CONFIDENCE) return;
         if (!Number.isFinite(gazeInfo.x) || !Number.isFinite(gazeInfo.y)) return;
@@ -384,6 +389,7 @@ export function useEyedidGaze({
     initError,
     blinkCount,
     attentionScore,
+    trackingState,
     calUi,
     skipCalibration,
   };

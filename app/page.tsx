@@ -61,6 +61,34 @@ type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 const SLEEP_TIMEOUT_MS = 10_000;
 const TARGET_SCAN_MS = 120;
 const PROGRESS_TICK_MS = 120;
+const TUNING_PRESETS: Array<{ name: string; value: GazeTuning }> = [
+  {
+    name: "安定重視",
+    value: {
+      leftThresholdRatio: 0.4,
+      rightThresholdRatio: 0.6,
+      confirmFrames: 6,
+      releaseFrames: 4,
+      risePerTick: 2,
+      fallPerTick: 1,
+    },
+  },
+  {
+    name: "標準",
+    value: DEFAULT_GAZE_TUNING,
+  },
+  {
+    name: "反応重視",
+    value: {
+      leftThresholdRatio: 0.45,
+      rightThresholdRatio: 0.55,
+      confirmFrames: 3,
+      releaseFrames: 2,
+      risePerTick: 4,
+      fallPerTick: 1,
+    },
+  },
+];
 
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });
@@ -152,6 +180,7 @@ export default function GrandmaGazePage() {
     initError: eyedidInitError,
     blinkCount: eyedidBlinkCount,
     attentionScore: eyedidAttention,
+    trackingState: eyedidTrackingState,
     calUi,
     skipCalibration,
   } = useEyedidGaze({
@@ -236,6 +265,7 @@ export default function GrandmaGazePage() {
   const targetRef = useRef<"トイレ" | "お話" | null>(null);
   targetRef.current = target;
   const targetStabilityRef = useRef<TargetStabilityState>(INITIAL_TARGET_STABILITY);
+  const [debugRawHit, setDebugRawHit] = useState<"トイレ" | "お話" | null>(null);
   // 二重送信防止フラグ
   const hasSubmittedRef = useRef(false);
   const conversationTurnRef = useRef(0);
@@ -256,6 +286,7 @@ export default function GrandmaGazePage() {
         confirmFrames: gazeTuning.confirmFrames,
         releaseFrames: gazeTuning.releaseFrames,
       });
+      setDebugRawHit(rawHit);
       const next = targetStabilityRef.current.locked;
       setTarget((prev) => (prev === next ? prev : next));
     }, TARGET_SCAN_MS);
@@ -266,6 +297,7 @@ export default function GrandmaGazePage() {
     if (!isSuccess && !isCalibrating && !isSleepMode) return;
     targetStabilityRef.current = INITIAL_TARGET_STABILITY;
     setTarget(null);
+    setDebugRawHit(null);
   }, [isSuccess, isCalibrating, isSleepMode]);
 
   // 滞留ゲージ（updater は純粋に数値だけ更新。submitCall はここで呼ばない）
@@ -781,6 +813,18 @@ export default function GrandmaGazePage() {
           {showTuning && (
             <div className="absolute left-8 top-20 z-[10000] w-[min(26rem,calc(100vw-4rem))] rounded-2xl border border-slate-700 bg-slate-900/95 p-4 text-xs text-slate-200 shadow-2xl backdrop-blur">
               <p className="mb-3 font-bold">誤反応を減らす調整（自動保存）</p>
+              <div className="mb-3 flex flex-wrap gap-2">
+                {TUNING_PRESETS.map((p) => (
+                  <button
+                    key={p.name}
+                    type="button"
+                    onClick={() => setGazeTuning(normalizeGazeTuning(p.value))}
+                    className="rounded-full border border-slate-600 px-3 py-1 text-[11px] hover:bg-slate-800"
+                  >
+                    {p.name}
+                  </button>
+                ))}
+              </div>
               <div className="space-y-3">
                 <label className="block">
                   <span>左判定の広さ: {(gazeTuning.leftThresholdRatio * 100).toFixed(0)}%</span>
@@ -875,7 +919,19 @@ export default function GrandmaGazePage() {
           {!trackingError && (
             <div className="pointer-events-none fixed bottom-3 left-3 z-[10000] max-w-[min(100%,20rem)] rounded bg-black/55 px-2 py-1 font-mono text-[10px] text-slate-300 sm:text-xs">
               まばたき累計: {eyedidBlinkCount} / 集中度:{" "}
-              {eyedidAttention != null ? eyedidAttention.toFixed(2) : "—"}
+              {eyedidAttention != null ? eyedidAttention.toFixed(2) : "—"} / 状態:{" "}
+              {eyedidTrackingState === 0
+                ? "SUCCESS"
+                : eyedidTrackingState === 1
+                  ? "LOW_CONF"
+                  : eyedidTrackingState === 3
+                    ? "FACE_MISS"
+                    : eyedidTrackingState ?? "—"}
+            </div>
+          )}
+          {!trackingError && (
+            <div className="pointer-events-none fixed bottom-16 left-3 z-[10000] max-w-[min(100%,24rem)] rounded bg-black/55 px-2 py-1 font-mono text-[10px] text-cyan-200 sm:text-xs">
+              raw={String(debugRawHit)} lock={String(targetStabilityRef.current.locked)} cand={String(targetStabilityRef.current.candidate)} frames={targetStabilityRef.current.candidateFrames}/{gazeTuning.confirmFrames}
             </div>
           )}
 
