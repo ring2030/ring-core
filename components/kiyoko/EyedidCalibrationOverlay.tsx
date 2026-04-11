@@ -81,6 +81,18 @@ export function EyedidCalibrationOverlay({
         )}
       </div>
 
+      {!showCameraGate && dot == null && (
+        <div
+          className="pointer-events-none absolute inset-0 z-[10000] flex flex-col items-center justify-center gap-4 px-6"
+          aria-live="polite"
+        >
+          <div className="h-16 w-16 animate-pulse rounded-full bg-red-500 shadow-[0_0_40px_rgba(239,68,68,0.7)]" />
+          <p className="max-w-xl text-center text-lg font-bold text-cyan-100 sm:text-xl">
+            点の位置を読み込んでいます。顔を画面の中央付近に入れてください。
+          </p>
+        </div>
+      )}
+
       {!showCameraGate && dot != null && (
         <div
           className="pointer-events-none absolute z-[10001] -translate-x-1/2 -translate-y-1/2"

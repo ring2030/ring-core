@@ -62,6 +62,14 @@ const SLEEP_TIMEOUT_MS = 10_000;
 const TARGET_SCAN_MS = 120;
 const PROGRESS_TICK_MS = 120;
 
+function eyedidTrackingLabel(state: number | null): string {
+  if (state === 0) return "良好";
+  if (state === 1) return "やや不安定";
+  if (state === 2) return "未対応";
+  if (state === 3) return "顔が見えない";
+  return "待機中";
+}
+
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });
   const [target, setTarget] = useState<"トイレ" | "お話" | null>(null);
@@ -152,8 +160,10 @@ export default function GrandmaGazePage() {
     initError: eyedidInitError,
     blinkCount: eyedidBlinkCount,
     attentionScore: eyedidAttention,
+    trackingState: eyedidTrackingState,
     calUi,
     skipCalibration,
+    setCameraPlacement,
   } = useEyedidGaze({
     isSleepMode,
     isCalibrating,
@@ -733,6 +743,21 @@ export default function GrandmaGazePage() {
                 ? `⚠️ ${trackingError ?? cameraError}`
                 : statusMessage}
             </p>
+            {!trackingError && !cameraError && (
+              <p className="text-xs text-slate-500 sm:text-sm">
+                赤い点の較正をやり直す → 右上「再キャリブレーション」（保存済みだとメイン画面では赤い点は出ません）
+              </p>
+            )}
+            {!trackingError && (
+              <p className="font-mono text-[10px] text-slate-500 sm:text-xs">
+                視線状態: {eyedidTrackingLabel(eyedidTrackingState)}
+                {eyedidTrackingState === 3
+                  ? " — 画面を正面から見て、明るさを上げてください。"
+                  : gazePoint.x < 0
+                    ? " — 視線がまだ取得できていません。"
+                    : ""}
+              </p>
+            )}
             {(trackingError ||
               cameraError ||
               statusMessage === "カメラを準備しています...") && (
@@ -777,6 +802,27 @@ export default function GrandmaGazePage() {
           >
             視線チューニング
           </button>
+          {!trackingError && (
+            <div className="absolute left-8 top-24 z-[10000] flex flex-col gap-1.5">
+              <span className="text-[10px] text-slate-500">カメラがモニタの</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setCameraPlacement(true)}
+                  className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
+                >
+                  上
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCameraPlacement(false)}
+                  className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
+                >
+                  下
+                </button>
+              </div>
+            </div>
+          )}
 
           {showTuning && (
             <div className="absolute left-8 top-20 z-[10000] w-[min(26rem,calc(100vw-4rem))] rounded-2xl border border-slate-700 bg-slate-900/95 p-4 text-xs text-slate-200 shadow-2xl backdrop-blur">

@@ -61,9 +61,13 @@ export type UseEyedidGazeResult = {
   blinkCount: number;
   /** 直近の集中度スコア（SDK 値。未受信時は null） */
   attentionScore: number | null;
+  /** TrackingState の生値（0=SUCCESS, 1=LOW_CONF, 3=FACE_MISSING など） */
+  trackingState: number | null;
   calUi: EyedidCalibrationUi;
   /** キャリブレーションを中断（精度は下がります） */
   skipCalibration: () => void;
+  /** 内蔵カメラがモニタの上か下か（顔検出が出ないときの切り分け用） */
+  setCameraPlacement: (cameraOnTop: boolean) => void;
 };
 
 /**
@@ -84,6 +88,7 @@ export function useEyedidGaze({
   const [initError, setInitError] = useState<string | null>(null);
   const [blinkCount, setBlinkCount] = useState(0);
   const [attentionScore, setAttentionScore] = useState<number | null>(null);
+  const [trackingState, setTrackingState] = useState<number | null>(null);
   const [calUi, setCalUi] = useState<EyedidCalibrationUi>({
     dot: null,
     progress: 0,
@@ -115,6 +120,22 @@ export function useEyedidGaze({
     onCalibrationCompleteRef.current();
   }, []);
 
+  const setCameraPlacement = useCallback((cameraOnTop: boolean) => {
+    const easy = easyRef.current as
+      | (EasySeeSo & { setCameraPosition: (cameraX: number, cameraOnTop: boolean) => void })
+      | null;
+    if (!easy) return;
+    try {
+      const x = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 0;
+      easy.setCameraPosition(x, cameraOnTop);
+      onStatusMessageRef.current(
+        `カメラを「モニタ${cameraOnTop ? "上" : "下"}」前提にしました（まだ反応しない場合は再キャリブ）`,
+      );
+    } catch (e) {
+      console.error("[Eyedid] setCameraPosition", e);
+    }
+  }, []);
+
   // ── メインの初期化・トラッキング・キャリブレーション ─────────────
   useEffect(() => {
     if (!enabled) {
@@ -126,6 +147,7 @@ export function useEyedidGaze({
     async function bootstrap() {
       setLicenseError(null);
       setInitError(null);
+      setTrackingState(null);
 
       const license = getEyedidLicenseKey();
       if (!license) {
@@ -213,6 +235,7 @@ export function useEyedidGaze({
         y: number;
         trackingState: number;
       }) => {
+        if (!cancelled) setTrackingState(gazeInfo.trackingState);
         if (!isUsableTracking(gazeInfo.trackingState)) return;
         if (!Number.isFinite(gazeInfo.x) || !Number.isFinite(gazeInfo.y)) return;
         const now = Date.now();
@@ -244,8 +267,6 @@ export function useEyedidGaze({
       }
       if (cancelled) return;
 
-      onStatusMessageRef.current("視線を準備しています...");
-
       const cached = typeof localStorage !== "undefined"
         ? localStorage.getItem(EYEDID_CAL_KEY)
         : null;
@@ -265,9 +286,15 @@ export function useEyedidGaze({
         } catch (e) {
           console.error("[Eyedid] setCalibrationData (cache)", e);
         }
-        if (!cancelled) onCalibrationCompleteRef.current();
+        if (!cancelled) {
+          // キャッシュ適用後も「準備」のままだと誤解されやすい。視線コールバックまでの案内に切り替える
+          onStatusMessageRef.current("視線を検知中...");
+          onCalibrationCompleteRef.current();
+        }
         return;
       }
+
+      onStatusMessageRef.current("視線を準備しています...");
 
       // 1〜5 点キャリブレーション（SDK 組み込み）
       setCalUi({ dot: null, progress: 0 });
@@ -295,6 +322,7 @@ export function useEyedidGaze({
           }
           if (!cancelled) {
             setCalUi({ dot: null, progress: 0 });
+            onStatusMessageRef.current("視線を検知中...");
             onCalibrationCompleteRef.current();
           }
         },
@@ -352,6 +380,7 @@ export function useEyedidGaze({
       }
 
       const runGazeWake = (gazeInfo: { x: number; y: number; trackingState: number }) => {
+        setTrackingState(gazeInfo.trackingState);
         const ts = gazeInfo.trackingState;
         if (ts !== TrackingState.SUCCESS && ts !== TrackingState.LOW_CONFIDENCE) return;
         if (!Number.isFinite(gazeInfo.x) || !Number.isFinite(gazeInfo.y)) return;
@@ -384,7 +413,9 @@ export function useEyedidGaze({
     initError,
     blinkCount,
     attentionScore,
+    trackingState,
     calUi,
     skipCalibration,
+    setCameraPlacement,
   };
 }
