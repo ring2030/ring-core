@@ -355,6 +355,8 @@ export function useEyedidGaze({
 
   // ── スリープ：トラッキング停止／解除：再開 + キャッシュ済みキャリブレーション適用 ──
   useEffect(() => {
+    let cancelled = false;
+
     async function sleepOrWake() {
       const inst = easyRef.current;
       if (!inst) return;
@@ -374,12 +376,14 @@ export function useEyedidGaze({
       let TrackingState: typeof import("seeso").TrackingState;
       try {
         const seesoMod = await import("seeso");
+        if (cancelled) return;
         TrackingState = seesoMod.TrackingState;
       } catch {
         return;
       }
 
       const runGazeWake = (gazeInfo: { x: number; y: number; trackingState: number }) => {
+        if (cancelled) return;
         setTrackingState(gazeInfo.trackingState);
         const ts = gazeInfo.trackingState;
         if (ts !== TrackingState.SUCCESS && ts !== TrackingState.LOW_CONFIDENCE) return;
@@ -394,7 +398,7 @@ export function useEyedidGaze({
 
       try {
         const ok = await inst.startTracking(runGazeWake, () => {});
-        if (!ok) return;
+        if (cancelled || !ok) return;
         trackingActiveRef.current = true;
         const cached = localStorage.getItem(EYEDID_CAL_KEY);
         if (cached) {
@@ -406,6 +410,10 @@ export function useEyedidGaze({
     }
 
     void sleepOrWake();
+
+    return () => {
+      cancelled = true;
+    };
   }, [isSleepMode]);
 
   return {
