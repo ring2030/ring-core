@@ -5,6 +5,7 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
+import { useIrisGaze } from "@/hooks/useIrisGaze";
 import { usePointerGaze } from "@/hooks/usePointerGaze";
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -57,6 +58,9 @@ export default function GrandmaGazePage() {
   const [windowHeight, setWindowHeight] = useState(700);
   const [gazeTuning, setGazeTuning] = useState<GazeTuning>(DEFAULT_GAZE_TUNING);
   const [showTuning, setShowTuning] = useState(false);
+  /** true: MediaPipe 虹彩 / false: Eyedid（seeso）ロールバック用 */
+  const [gazeMode, setGazeMode] = useState(true);
+  const [irisRestartKey, setIrisRestartKey] = useState(0);
 
   // キャリブ／カメラゲートは localStorage 依存のため、SSR と同じ初期値にしてハイドレーションずれを防ぐ
   const [gazeHydrated, setGazeHydrated] = useState(false);
@@ -73,12 +77,18 @@ export default function GrandmaGazePage() {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
       setStatusMessage("タッチ・マウスで操作");
+    } else if (gazeMode) {
+      setIsCalibrating(false);
+      setCameraSessionStarted(true);
+      setStatusMessage("視線を検知中…");
     } else {
       const fresh = hasFreshEyedidCalibration();
       setIsCalibrating(!fresh);
       setCameraSessionStarted(fresh);
     }
     setGazeHydrated(true);
+    // gazeMode は初回マウント時の値のみ（常に true）でよい — 切替は handleGazeEngineChange が担当
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleInputModeChange = useCallback((mode: NurseInputMode) => {
@@ -90,11 +100,33 @@ export default function GrandmaGazePage() {
       setCameraSessionStarted(true);
       setStatusMessage("タッチ・マウスで操作");
       setGazePoint({ x: -100, y: -100 });
+    } else if (gazeMode) {
+      setIsCalibrating(false);
+      setCameraSessionStarted(true);
+      setStatusMessage("視線を検知中…");
+      setBootstrapVersion((k) => k + 1);
     } else {
       const fresh = hasFreshEyedidCalibration();
       setIsCalibrating(!fresh);
       setCameraSessionStarted(fresh);
       setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています...");
+      setBootstrapVersion((k) => k + 1);
+    }
+  }, [gazeMode]);
+
+  const handleGazeEngineChange = useCallback((useIris: boolean) => {
+    setGazeMode(useIris);
+    setCameraGateError(null);
+    if (useIris) {
+      setIsCalibrating(false);
+      setCameraSessionStarted(true);
+      setStatusMessage("視線を検知中…");
+      setIrisRestartKey((k) => k + 1);
+    } else {
+      const fresh = hasFreshEyedidCalibration();
+      setIsCalibrating(!fresh);
+      setCameraSessionStarted(fresh);
+      setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています…");
       setBootstrapVersion((k) => k + 1);
     }
   }, []);
@@ -137,7 +169,10 @@ export default function GrandmaGazePage() {
   }, []);
 
   const eyedidEnabled =
-    gazeHydrated && inputMode === "eyedid" && (!isCalibrating || cameraSessionStarted);
+    gazeHydrated &&
+    inputMode === "eyedid" &&
+    !gazeMode &&
+    (!isCalibrating || cameraSessionStarted);
 
   usePointerGaze({
     enabled:
@@ -168,6 +203,8 @@ export default function GrandmaGazePage() {
     onCalibrationComplete,
     enabled: eyedidEnabled,
   });
+
+  const hasSubmittedRef = useRef(false);
 
   const resetToMain = useCallback(() => {
     window.speechSynthesis.cancel();
@@ -211,7 +248,76 @@ export default function GrandmaGazePage() {
     }
   }, []);
 
-  const trackingError = eyedidLicenseError ?? eyedidInitError ?? null;
+  const submitCall = useCallback(
+    async (reason: string) => {
+      setIsSuccess(true);
+      setSentReason(reason);
+      if (reason === "お話") {
+        conversationTurnRef.current = 0;
+        conversationHistoryRef.current = [];
+      }
+      playSubmitSound();
+      currentCallIdRef.current = null;
+
+      try {
+        const docRef = await addDoc(collection(getFirestoreDb(), "calls"), {
+          理由: [reason],
+          特記事項: reason === "トイレ" ? "視線入力からの自動送信" : "AI会話開始",
+          送信者: "きよ子",
+          送信日時: serverTimestamp(),
+        });
+        currentCallIdRef.current = docRef.id;
+      } catch {
+        /* ignore */
+      }
+
+      if (reason === "トイレ") {
+        setTimeout(() => resetToMain(), 5000);
+      }
+    },
+    [playSubmitSound, resetToMain],
+  );
+
+  const irisEnabled =
+    gazeHydrated &&
+    inputMode === "eyedid" &&
+    gazeMode &&
+    !isSuccess &&
+    !isSleepMode &&
+    !isCalibrating;
+
+  const {
+    videoRef: irisVideoRef,
+    zone: irisZone,
+    leftProgress: irisLeftProgress,
+    rightProgress: irisRightProgress,
+    gazeX: irisGazeX,
+    faceDetected: irisFaceDetected,
+    error: irisError,
+  } = useIrisGaze({
+    enabled: irisEnabled,
+    restartKey: irisRestartKey,
+    onLeftSelect: () => {
+      if (hasSubmittedRef.current) return;
+      hasSubmittedRef.current = true;
+      void submitCall("トイレ");
+    },
+    onRightSelect: () => {
+      if (hasSubmittedRef.current) return;
+      hasSubmittedRef.current = true;
+      void submitCall("お話");
+    },
+    onActivity: resetSleepTimer,
+  });
+
+  const trackingError =
+    inputMode === "eyedid" && gazeMode
+      ? irisError
+      : eyedidLicenseError ?? eyedidInitError ?? null;
+
+  const legacyGazePipeline =
+    gazeHydrated &&
+    (inputMode === "pointer" || (inputMode === "eyedid" && !gazeMode));
 
   useEffect(() => {
     setWindowWidth(window.innerWidth);
@@ -252,10 +358,9 @@ export default function GrandmaGazePage() {
   targetRef.current = target;
   const targetStabilityRef = useRef<TargetStabilityState>(INITIAL_TARGET_STABILITY);
   const [debugRawHit, setDebugRawHit] = useState<"トイレ" | "お話" | null>(null);
-  const hasSubmittedRef = useRef(false);
 
   useEffect(() => {
-    if (isSuccess || isCalibrating || isSleepMode) return;
+    if (!legacyGazePipeline || isSuccess || isCalibrating || isSleepMode) return;
     const id = setInterval(() => {
       const { x, y } = gazeRef.current;
       const rawHit = selectGazeTarget({
@@ -275,7 +380,15 @@ export default function GrandmaGazePage() {
       setTarget((prev) => (prev === next ? prev : next));
     }, TARGET_SCAN_MS);
     return () => clearInterval(id);
-  }, [isSuccess, isCalibrating, isSleepMode, windowWidth, windowHeight, gazeTuning]);
+  }, [
+    legacyGazePipeline,
+    isSuccess,
+    isCalibrating,
+    isSleepMode,
+    windowWidth,
+    windowHeight,
+    gazeTuning,
+  ]);
 
   useEffect(() => {
     if (!isSuccess && !isCalibrating && !isSleepMode) return;
@@ -285,7 +398,7 @@ export default function GrandmaGazePage() {
   }, [isSuccess, isCalibrating, isSleepMode]);
 
   useEffect(() => {
-    if (isSuccess || isCalibrating || isSleepMode) return;
+    if (!legacyGazePipeline || isSuccess || isCalibrating || isSleepMode) return;
     const interval = setInterval(() => {
       setProgress((prev) =>
         computeNextProgress(
@@ -297,7 +410,7 @@ export default function GrandmaGazePage() {
       );
     }, PROGRESS_TICK_MS);
     return () => clearInterval(interval);
-  }, [target, isSuccess, isCalibrating, isSleepMode, gazeTuning]);
+  }, [legacyGazePipeline, target, isSuccess, isCalibrating, isSleepMode, gazeTuning]);
 
   useEffect(() => {
     if (progress >= 100 && !isSuccess && !hasSubmittedRef.current && targetRef.current) {
@@ -305,32 +418,32 @@ export default function GrandmaGazePage() {
       submitCall(targetRef.current);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [progress]);
+  }, [progress, submitCall]);
 
-  const submitCall = async (reason: string) => {
-    setIsSuccess(true);
-    setSentReason(reason);
-    if (reason === "お話") {
-      conversationTurnRef.current = 0;
-      conversationHistoryRef.current = [];
-    }
-    playSubmitSound();
-    currentCallIdRef.current = null;
+  const irisUiActive = irisEnabled;
 
-    try {
-      const docRef = await addDoc(collection(getFirestoreDb(), "calls"), {
-        理由: [reason],
-        特記事項: reason === "トイレ" ? "視線入力からの自動送信" : "AI会話開始",
-        送信者: "きよ子",
-        送信日時: serverTimestamp(),
-      });
-      currentCallIdRef.current = docRef.id;
-    } catch {}
+  const displayGazeX =
+    irisUiActive && irisFaceDetected
+      ? ((irisGazeX + 1) / 2) * windowWidth
+      : gazePoint.x;
+  const displayGazeY =
+    irisUiActive && irisFaceDetected ? windowHeight * 0.58 : gazePoint.y;
 
-    if (reason === "トイレ") {
-      setTimeout(() => resetToMain(), 5000);
-    }
-  };
+  const displayTarget: "トイレ" | "お話" | null = irisUiActive
+    ? irisZone === "left"
+      ? "トイレ"
+      : irisZone === "right"
+        ? "お話"
+        : null
+    : target;
+
+  const displayProgress = irisUiActive
+    ? irisZone === "left"
+      ? irisLeftProgress * 100
+      : irisZone === "right"
+        ? irisRightProgress * 100
+        : 0
+    : progress;
 
   if (!gazeHydrated) {
     return (
@@ -352,7 +465,17 @@ export default function GrandmaGazePage() {
 
       {isSleepMode && <SleepOverlay onWakeUp={handleWakeUp} />}
 
-      {isCalibrating && !eyedidLicenseError && inputMode === "eyedid" && (
+      {inputMode === "eyedid" && gazeMode && (
+        <video
+          ref={irisVideoRef}
+          className="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
+          playsInline
+          muted
+          autoPlay
+        />
+      )}
+
+      {isCalibrating && !eyedidLicenseError && inputMode === "eyedid" && !gazeMode && (
         <EyedidCalibrationOverlay
           calUi={calUi}
           onSkip={skipCalibration}
@@ -370,9 +493,9 @@ export default function GrandmaGazePage() {
         <div
           className="fixed w-48 h-48 rounded-full bg-amber-400 opacity-40 mix-blend-screen pointer-events-none transition-all duration-100 blur-2xl animate-pulse"
           style={{
-            left: gazePoint.x - 96,
-            top: gazePoint.y - 96,
-            display: gazePoint.x > 0 ? "block" : "none",
+            left: displayGazeX - 96,
+            top: displayGazeY - 96,
+            display: displayGazeX > 0 ? "block" : "none",
             zIndex: 9999,
           }}
         />
@@ -407,15 +530,24 @@ export default function GrandmaGazePage() {
           <GazeStatusBar
             inputMode={inputMode}
             onInputModeChange={handleInputModeChange}
+            gazeMode={gazeMode}
+            onGazeEngineChange={handleGazeEngineChange}
             statusMessage={statusMessage}
             trackingError={inputMode === "eyedid" ? trackingError : null}
             cameraError={cameraError}
-            trackingState={eyedidTrackingState}
-            gazePointX={gazePoint.x}
+            trackingState={gazeMode ? null : eyedidTrackingState}
+            irisFaceDetected={
+              inputMode === "eyedid" && gazeMode ? irisFaceDetected : null
+            }
+            gazePointX={displayGazeX}
             onRestartCamera={() => {
               setCameraError(null);
               setStatusMessage("カメラを準備しています...");
-              setBootstrapVersion((k) => k + 1);
+              if (gazeMode) {
+                setIrisRestartKey((k) => k + 1);
+              } else {
+                setBootstrapVersion((k) => k + 1);
+              }
             }}
             onRecalibrate={() => {
               try {
@@ -442,6 +574,7 @@ export default function GrandmaGazePage() {
 
           {process.env.NODE_ENV === "development" &&
             inputMode === "eyedid" &&
+            !gazeMode &&
             !trackingError && (
             <GazeDebugOverlay
               blinkCount={eyedidBlinkCount}
@@ -453,7 +586,7 @@ export default function GrandmaGazePage() {
             />
           )}
 
-          <GazeTargetPanel target={target} progress={progress} />
+          <GazeTargetPanel target={displayTarget} progress={displayProgress} />
         </div>
       ) : null}
 

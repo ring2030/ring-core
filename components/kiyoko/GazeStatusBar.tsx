@@ -6,10 +6,15 @@ import { trackingLabel } from "@/lib/gaze/trackingLabel";
 type Props = {
   inputMode: NurseInputMode;
   onInputModeChange: (mode: NurseInputMode) => void;
+  /** true: MediaPipe 虹彩 / false: Eyedid（ロールバック） */
+  gazeMode: boolean;
+  onGazeEngineChange: (useIris: boolean) => void;
   statusMessage: string;
   trackingError: string | null;
   cameraError: string | null;
   trackingState: number | null;
+  /** 虹彩モード時の顔検出（ステータス行用） */
+  irisFaceDetected: boolean | null;
   gazePointX: number;
   onRestartCamera: () => void;
   onRecalibrate: () => void;
@@ -21,10 +26,13 @@ type Props = {
 export function GazeStatusBar({
   inputMode,
   onInputModeChange,
+  gazeMode,
+  onGazeEngineChange,
   statusMessage,
   trackingError,
   cameraError,
   trackingState,
+  irisFaceDetected,
   gazePointX,
   onRestartCamera,
   onRecalibrate,
@@ -72,6 +80,39 @@ export function GazeStatusBar({
           </button>
         </div>
 
+        {!isPointer && (
+          <div
+            className="flex rounded-2xl border border-slate-600/80 bg-slate-950/90 p-1 shadow-lg backdrop-blur-md"
+            role="group"
+            aria-label="視線エンジン"
+          >
+            <button
+              type="button"
+              aria-pressed={gazeMode}
+              className={`flex-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${
+                gazeMode
+                  ? "bg-emerald-600 text-white shadow"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              onClick={() => onGazeEngineChange(true)}
+            >
+              虹彩
+            </button>
+            <button
+              type="button"
+              aria-pressed={!gazeMode}
+              className={`flex-1 rounded-xl py-2 text-xs font-bold transition sm:text-sm ${
+                !gazeMode
+                  ? "bg-cyan-700 text-white shadow"
+                  : "text-slate-400 hover:text-slate-200"
+              }`}
+              onClick={() => onGazeEngineChange(false)}
+            >
+              Eyedid
+            </button>
+          </div>
+        )}
+
         <p
           className={`text-center text-base font-bold sm:text-xl ${
             hasError ? "text-red-300" : "text-slate-200"
@@ -94,12 +135,23 @@ export function GazeStatusBar({
 
         {!isPointer && (
           <p className="text-center font-mono text-[10px] text-slate-500 sm:text-xs">
-            視線状態: {trackingLabel(trackingState)}
-            {trackingState === 3
-              ? " — 正面を向き、明るさを上げてください。"
-              : gazePointX < 0
-                ? " — まだ視線を取得できていません。"
-                : ""}
+            視線状態:{" "}
+            {gazeMode ? (
+              irisFaceDetected ? (
+                "虹彩検出中"
+              ) : (
+                "顔を探しています…"
+              )
+            ) : (
+              <>
+                {trackingLabel(trackingState)}
+                {trackingState === 3
+                  ? " — 正面を向き、明るさを上げてください。"
+                  : gazePointX < 0
+                    ? " — まだ視線を取得できていません。"
+                    : ""}
+              </>
+            )}
           </p>
         )}
 
@@ -135,13 +187,15 @@ export function GazeStatusBar({
 
       {!isPointer && (
         <>
-          <button
-            type="button"
-            onClick={onRecalibrate}
-            className="absolute top-4 right-4 z-[10000] min-h-[40px] rounded-full border border-slate-600/80 bg-slate-900/85 px-3 py-2 text-xs text-slate-300 shadow backdrop-blur-sm hover:bg-slate-800"
-          >
-            再調整
-          </button>
+          {!gazeMode && (
+            <button
+              type="button"
+              onClick={onRecalibrate}
+              className="absolute top-4 right-4 z-[10000] min-h-[40px] rounded-full border border-slate-600/80 bg-slate-900/85 px-3 py-2 text-xs text-slate-300 shadow backdrop-blur-sm hover:bg-slate-800"
+            >
+              再調整
+            </button>
+          )}
 
           <button
             type="button"
@@ -152,25 +206,27 @@ export function GazeStatusBar({
             感度
           </button>
 
-          <div className="absolute left-4 top-[4.5rem] z-[10000] flex flex-col gap-1">
-            <span className="text-[10px] text-slate-500">カメラ</span>
-            <div className="flex gap-1">
-              <button
-                type="button"
-                onClick={() => onCameraPlacement(true)}
-                className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
-              >
-                上
-              </button>
-              <button
-                type="button"
-                onClick={() => onCameraPlacement(false)}
-                className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
-              >
-                下
-              </button>
+          {!gazeMode && (
+            <div className="absolute left-4 top-[4.5rem] z-[10000] flex flex-col gap-1">
+              <span className="text-[10px] text-slate-500">カメラ</span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => onCameraPlacement(true)}
+                  className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
+                >
+                  上
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onCameraPlacement(false)}
+                  className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
+                >
+                  下
+                </button>
+              </div>
             </div>
-          </div>
+          )}
         </>
       )}
     </>
