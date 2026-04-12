@@ -1028,10 +1028,10 @@ export default function GrandmaGazePage() {
       />
 
       {/*
-        家族・スタッフ用の画面へ（きよこ画面単体では URL を知らないと辿り着けないため）。
-        送信中・会話中は誤タップ防止のため非表示。省電力中はスリープ解除後に利用。
+        家族・スタッフ用の画面へ。スリープ中はオーバーレイで隠れる。
+        isSuccess 中も表示（送信中・会話後もナース等へ辿れるようにする）。
       */}
-      {!isSuccess && !isSleepMode && (
+      {!isSleepMode && (
         <nav
           aria-label="スタッフ・家族向けページ"
           className="pointer-events-none fixed bottom-2 left-0 right-0 z-[10002] flex justify-center px-2"

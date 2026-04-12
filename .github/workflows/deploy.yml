@@ -1,0 +1,40 @@
+# Vercel への本番デプロイ（GitHub Actions 経由）
+#
+# 有効化: リポジトリ Settings → Secrets and variables → Actions
+#   - Repository variables: ENABLE_VERCEL_ACTION = true
+#   - Repository secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+# Vercel 側で GitHub 連携のみ使う場合はこのワークフローは不要（push でも無害: ジョブはスキップ）。
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: vars.ENABLE_VERCEL_ACTION == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (verify)
+        run: npm run build
+
+      - name: Deploy to Vercel
+        run: npx vercel@latest deploy --prod --yes
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

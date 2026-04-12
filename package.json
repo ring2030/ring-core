@@ -2,8 +2,13 @@
   "name": "ring-core",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "next dev",
+    "dev:3010": "next dev --port 3010",
+    "dev:3001": "next dev --port 3001",
     "dev:node": "node ./node_modules/next/dist/bin/next dev",
     "dev:lan": "next dev --hostname 0.0.0.0",
     "dev:lan:node": "node ./node_modules/next/dist/bin/next dev --hostname 0.0.0.0",
@@ -13,7 +18,7 @@
     "lint:gaze": "eslint \"lib/gaze/**/*.ts\" \"hooks/useEyedidGaze.ts\" \"components/kiyoko/EyedidCalibrationOverlay.tsx\"",
     "test": "vitest",
     "test:run": "vitest run",
-    "run:quality": "npm run lint:gaze && npm run test:run",
+    "run:quality": "node ./tools/run-quality.mjs",
     "run:verify": "node ./tools/run-verify.mjs",
     "run:auto": "node ./tools/auto-run.mjs"
   },

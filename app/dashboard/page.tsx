@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { StaffLinks } from "@/components/dashboard/StaffLinks";
 
 const REASON_OPTIONS = [
   "トイレ",
@@ -80,6 +81,9 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-dvh bg-orange-50 px-3 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] font-sans text-gray-800">
+      <div className="mx-auto mb-3 w-full max-w-md">
+        <StaffLinks className="justify-center" />
+      </div>
       <div className="mx-auto w-full max-w-md overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-lg">
         <header className="bg-orange-400 px-4 py-5 text-center text-white shadow-inner">
           <h1 className="text-xl font-bold tracking-wide">ケア記録帳</h1>

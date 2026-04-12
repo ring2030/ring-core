@@ -17,6 +17,7 @@ import {
 import PatientCard, { type PatientCardData } from "@/components/nurse/PatientCard";
 import ActivityLog,  { type CallRow }        from "@/components/nurse/ActivityLog";
 import SeedDataButton from "@/components/nurse/SeedDataButton";
+import { StaffLinks } from "@/components/dashboard/StaffLinks";
 
 // ─── Firebase ────────────────────────────────────────────────────────────────
 
@@ -330,6 +331,12 @@ export default function NurseDashboard() {
             </div>
           </div>
         </header>
+
+        <div className="border-b border-stone-200 bg-stone-100/90 px-4 py-2 sm:px-6">
+          <div className="mx-auto max-w-7xl">
+            <StaffLinks className="text-xs" />
+          </div>
+        </div>
 
         <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6">
 

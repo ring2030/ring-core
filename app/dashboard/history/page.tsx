@@ -24,6 +24,7 @@ import {
   Sunset,
 } from "lucide-react";
 import { buildHighlight, dateLabel } from "@/lib/dashboard/historyUtils";
+import { StaffLinks } from "@/components/dashboard/StaffLinks";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -286,6 +287,12 @@ export default function FamilyHistoryPage() {
             </div>
           </div>
         </header>
+
+        <div className="border-b border-rose-100 bg-rose-50/80 px-4 py-2">
+          <div className="mx-auto max-w-lg">
+            <StaffLinks className="text-xs" />
+          </div>
+        </div>
 
         <main className="mx-auto max-w-lg px-4 py-6">
 
