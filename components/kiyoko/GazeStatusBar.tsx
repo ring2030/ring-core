@@ -1,8 +1,11 @@
 "use client";
 
+import type { NurseInputMode } from "@/lib/gaze/inputModeStorage";
 import { trackingLabel } from "@/lib/gaze/trackingLabel";
 
 type Props = {
+  inputMode: NurseInputMode;
+  onInputModeChange: (mode: NurseInputMode) => void;
   statusMessage: string;
   trackingError: string | null;
   cameraError: string | null;
@@ -16,6 +19,8 @@ type Props = {
 };
 
 export function GazeStatusBar({
+  inputMode,
+  onInputModeChange,
   statusMessage,
   trackingError,
   cameraError,
@@ -28,82 +33,145 @@ export function GazeStatusBar({
   onToggleTuning,
 }: Props) {
   const hasError = Boolean(trackingError || cameraError);
+  const isPointer = inputMode === "pointer";
 
   return (
     <>
-      <div className="text-center absolute top-8 z-[10000] flex max-w-[min(100%,42rem)] flex-col items-center gap-3 px-4">
+      {/* 入力モード：視線 SDK が死んでいてもナースコールは成立させる */}
+      <div className="absolute top-4 left-1/2 z-[10000] flex w-[min(100%,28rem)] -translate-x-1/2 flex-col gap-3 px-3">
+        <div
+          className="flex rounded-2xl border border-slate-600/80 bg-slate-950/90 p-1 shadow-lg backdrop-blur-md"
+          role="tablist"
+          aria-label="入力のしかた"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={inputMode === "eyedid"}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition sm:text-base ${
+              inputMode === "eyedid"
+                ? "bg-cyan-600 text-white shadow"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+            onClick={() => onInputModeChange("eyedid")}
+          >
+            視線
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={inputMode === "pointer"}
+            className={`flex-1 rounded-xl py-2.5 text-sm font-bold transition sm:text-base ${
+              inputMode === "pointer"
+                ? "bg-violet-600 text-white shadow"
+                : "text-slate-400 hover:text-slate-200"
+            }`}
+            onClick={() => onInputModeChange("pointer")}
+          >
+            タッチ・マウス
+          </button>
+        </div>
+
         <p
-          className={`text-lg font-bold inline-block px-6 py-3 rounded-full shadow-md border-2 sm:text-2xl sm:px-8 ${
-            hasError
-              ? "bg-red-900/90 text-red-300 border-red-700"
-              : "bg-slate-800/90 text-slate-400 border-slate-700"
+          className={`text-center text-base font-bold sm:text-xl ${
+            hasError ? "text-red-300" : "text-slate-200"
           }`}
         >
           {hasError ? `⚠️ ${trackingError ?? cameraError}` : statusMessage}
         </p>
-        {!hasError && (
-          <p className="text-xs text-slate-500 sm:text-sm">
-            赤い点の較正をやり直す → 右上「再キャリブレーション」（保存済みだとメイン画面では赤い点は出ません）
+
+        {!hasError && isPointer && (
+          <p className="text-center text-xs text-violet-300/90 sm:text-sm">
+            指やマウスを動かしてタイルの上で止めると、同じように確定します。
           </p>
         )}
-        {!trackingError && (
-          <p className="font-mono text-[10px] text-slate-500 sm:text-xs">
+
+        {!hasError && !isPointer && (
+          <p className="text-center text-xs text-slate-500 sm:text-sm">
+            視線が不安定なときは「タッチ・マウス」に切り替えてください。
+          </p>
+        )}
+
+        {!isPointer && (
+          <p className="text-center font-mono text-[10px] text-slate-500 sm:text-xs">
             視線状態: {trackingLabel(trackingState)}
             {trackingState === 3
-              ? " — 画面を正面から見て、明るさを上げてください。"
+              ? " — 正面を向き、明るさを上げてください。"
               : gazePointX < 0
-                ? " — 視線がまだ取得できていません。"
+                ? " — まだ視線を取得できていません。"
                 : ""}
           </p>
         )}
-        {(hasError || statusMessage === "カメラを準備しています...") && (
+
+        {hasError && !isPointer && (
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <button
+              type="button"
+              onClick={onRestartCamera}
+              className="min-h-[44px] rounded-full border border-slate-500 bg-slate-800 px-4 py-2 text-sm text-slate-100 transition hover:bg-slate-700"
+            >
+              カメラを再試行
+            </button>
+            <button
+              type="button"
+              onClick={() => onInputModeChange("pointer")}
+              className="min-h-[44px] rounded-full bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-violet-500"
+            >
+              タッチ・マウスで続行
+            </button>
+          </div>
+        )}
+
+        {!hasError && statusMessage === "カメラを準備しています..." && !isPointer && (
           <button
             type="button"
             onClick={onRestartCamera}
-            className="text-sm bg-slate-700 hover:bg-slate-600 text-slate-200 px-5 py-2 rounded-full border border-slate-500 transition touch-manipulation min-h-[44px]"
+            className="mx-auto min-h-[44px] rounded-full bg-slate-700 px-5 py-2 text-sm text-slate-200 hover:bg-slate-600"
           >
             📷 カメラを再起動
           </button>
         )}
       </div>
 
-      <button
-        type="button"
-        onClick={onRecalibrate}
-        className="absolute top-8 right-8 z-[10000] text-xs text-slate-400 bg-slate-800/70 border border-slate-700 px-3 py-2 rounded-full shadow touch-manipulation min-h-[40px]"
-      >
-        再キャリブレーション
-      </button>
+      {!isPointer && (
+        <>
+          <button
+            type="button"
+            onClick={onRecalibrate}
+            className="absolute top-4 right-4 z-[10000] min-h-[40px] rounded-full border border-slate-600/80 bg-slate-900/85 px-3 py-2 text-xs text-slate-300 shadow backdrop-blur-sm hover:bg-slate-800"
+          >
+            再調整
+          </button>
 
-      <button
-        type="button"
-        onClick={onToggleTuning}
-        className="absolute top-8 left-8 z-[10000] text-xs text-slate-400 bg-slate-800/70 border border-slate-700 px-3 py-2 rounded-full shadow touch-manipulation min-h-[40px]"
-        aria-pressed={showTuning}
-      >
-        視線チューニング
-      </button>
+          <button
+            type="button"
+            onClick={onToggleTuning}
+            className="absolute top-4 left-4 z-[10000] min-h-[40px] rounded-full border border-slate-600/80 bg-slate-900/85 px-3 py-2 text-xs text-slate-300 shadow backdrop-blur-sm hover:bg-slate-800"
+            aria-pressed={showTuning}
+          >
+            感度
+          </button>
 
-      {!trackingError && (
-        <div className="absolute left-8 top-24 z-[10000] flex flex-col gap-1.5">
-          <span className="text-[10px] text-slate-500">カメラがモニタの</span>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => onCameraPlacement(true)}
-              className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
-            >
-              上
-            </button>
-            <button
-              type="button"
-              onClick={() => onCameraPlacement(false)}
-              className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
-            >
-              下
-            </button>
+          <div className="absolute left-4 top-[4.5rem] z-[10000] flex flex-col gap-1">
+            <span className="text-[10px] text-slate-500">カメラ</span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => onCameraPlacement(true)}
+                className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
+              >
+                上
+              </button>
+              <button
+                type="button"
+                onClick={() => onCameraPlacement(false)}
+                className="rounded-lg border border-slate-600 bg-slate-800/90 px-2 py-1.5 text-[11px] text-cyan-200 hover:bg-slate-700"
+              >
+                下
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       )}
     </>
   );

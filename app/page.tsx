@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
+import { usePointerGaze } from "@/hooks/usePointerGaze";
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ElderVideoLetterOverlay } from "@/components/kiyoko/ElderVideoLetterOverlay";
@@ -37,12 +37,18 @@ import {
   type GazeTuning,
 } from "@/lib/gaze/tuning";
 import { SLEEP_TIMEOUT_MS, TARGET_SCAN_MS, PROGRESS_TICK_MS } from "@/lib/constants";
+import {
+  getStoredInputMode,
+  setStoredInputMode,
+  type NurseInputMode,
+} from "@/lib/gaze/inputModeStorage";
 
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });
   const [target, setTarget] = useState<"トイレ" | "お話" | null>(null);
   const [progress, setProgress] = useState(0);
   const [statusMessage, setStatusMessage] = useState("カメラを準備しています...");
+  const [inputMode, setInputMode] = useState<NurseInputMode>("eyedid");
 
   const [isSuccess, setIsSuccess] = useState(false);
   const [sentReason, setSentReason] = useState("");
@@ -60,11 +66,37 @@ export default function GrandmaGazePage() {
   const [cameraGateError, setCameraGateError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fresh = hasFreshEyedidCalibration();
-    setIsCalibrating(!fresh);
-    setCameraSessionStarted(fresh);
+    const mode = getStoredInputMode();
+    setInputMode(mode);
     setGazeTuning(loadGazeTuning());
+    if (mode === "pointer") {
+      setIsCalibrating(false);
+      setCameraSessionStarted(true);
+      setStatusMessage("タッチ・マウスで操作");
+    } else {
+      const fresh = hasFreshEyedidCalibration();
+      setIsCalibrating(!fresh);
+      setCameraSessionStarted(fresh);
+    }
     setGazeHydrated(true);
+  }, []);
+
+  const handleInputModeChange = useCallback((mode: NurseInputMode) => {
+    setStoredInputMode(mode);
+    setInputMode(mode);
+    setCameraGateError(null);
+    if (mode === "pointer") {
+      setIsCalibrating(false);
+      setCameraSessionStarted(true);
+      setStatusMessage("タッチ・マウスで操作");
+      setGazePoint({ x: -100, y: -100 });
+    } else {
+      const fresh = hasFreshEyedidCalibration();
+      setIsCalibrating(!fresh);
+      setCameraSessionStarted(fresh);
+      setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています...");
+      setBootstrapVersion((k) => k + 1);
+    }
   }, []);
 
   useEffect(() => {
@@ -104,7 +136,18 @@ export default function GrandmaGazePage() {
     setCameraError(null);
   }, []);
 
-  const eyedidEnabled = gazeHydrated && (!isCalibrating || cameraSessionStarted);
+  const eyedidEnabled =
+    gazeHydrated && inputMode === "eyedid" && (!isCalibrating || cameraSessionStarted);
+
+  usePointerGaze({
+    enabled:
+      gazeHydrated &&
+      inputMode === "pointer" &&
+      !isSuccess &&
+      !isSleepMode,
+    onPoint: onGazePointStable,
+    onActivity: resetSleepTimer,
+  });
 
   const {
     licenseError: eyedidLicenseError,
@@ -309,7 +352,7 @@ export default function GrandmaGazePage() {
 
       {isSleepMode && <SleepOverlay onWakeUp={handleWakeUp} />}
 
-      {isCalibrating && !eyedidLicenseError && (
+      {isCalibrating && !eyedidLicenseError && inputMode === "eyedid" && (
         <EyedidCalibrationOverlay
           calUi={calUi}
           onSkip={skipCalibration}
@@ -360,10 +403,12 @@ export default function GrandmaGazePage() {
           )}
         </div>
       ) : !isCalibrating ? (
-        <div className="w-full h-full px-12 flex flex-col items-center justify-center">
+        <div className="flex w-full flex-col items-center justify-center px-6 pb-8 pt-28 sm:px-12 sm:pt-32">
           <GazeStatusBar
+            inputMode={inputMode}
+            onInputModeChange={handleInputModeChange}
             statusMessage={statusMessage}
-            trackingError={trackingError}
+            trackingError={inputMode === "eyedid" ? trackingError : null}
             cameraError={cameraError}
             trackingState={eyedidTrackingState}
             gazePointX={gazePoint.x}
@@ -395,7 +440,9 @@ export default function GrandmaGazePage() {
             />
           )}
 
-          {!trackingError && (
+          {process.env.NODE_ENV === "development" &&
+            inputMode === "eyedid" &&
+            !trackingError && (
             <GazeDebugOverlay
               blinkCount={eyedidBlinkCount}
               attentionScore={eyedidAttention}

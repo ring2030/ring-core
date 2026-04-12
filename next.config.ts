@@ -29,6 +29,12 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: "/:path*",
+        headers: [
+          { key: "Permissions-Policy", value: "camera=(self), microphone=(self)" },
+        ],
+      },
+      {
         // WebAssembly files served from public/ must have the correct MIME type
         source: "/:path*.wasm",
         headers: [

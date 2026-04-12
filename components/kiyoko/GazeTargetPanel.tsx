@@ -18,10 +18,10 @@ type TargetButtonProps = {
 function TargetButton({ label, isActive, progress, colors }: TargetButtonProps) {
   return (
     <div
-      className={`flex-1 rounded-[4rem] border-[12px] transition-all duration-300 relative overflow-hidden flex items-center justify-center ${
+      className={`flex-1 rounded-[2.5rem] border-[10px] transition-all duration-300 relative overflow-hidden flex items-center justify-center sm:rounded-[4rem] sm:border-[12px] ${
         isActive
           ? `${colors.activeBorder} ${colors.activeBg} scale-[1.02] ${colors.activeShadow}`
-          : `${colors.inactiveBorder} bg-slate-800 shadow-md`
+          : `${colors.inactiveBorder} bg-slate-800/95 shadow-inner`
       }`}
     >
       <div
@@ -61,7 +61,7 @@ type Props = {
 
 export const GazeTargetPanel = memo(function GazeTargetPanel({ target, progress }: Props) {
   return (
-    <div className="flex flex-row gap-8 w-full h-[70vh] max-w-7xl mx-auto mt-16 max-[640px]:flex-col max-[640px]:gap-6 max-[640px]:h-auto max-[640px]:min-h-[50vh]">
+    <div className="mx-auto mt-4 flex h-[min(70vh,520px)] w-full max-w-6xl flex-row gap-6 max-[640px]:min-h-[48vh] max-[640px]:flex-col max-[640px]:gap-5 sm:mt-6 sm:h-[70vh] sm:max-w-7xl sm:gap-8">
       <TargetButton label="トイレ" isActive={target === "トイレ"} progress={progress} colors={TOILET_COLORS} />
       <TargetButton label="お話" isActive={target === "お話"} progress={progress} colors={TALK_COLORS} />
     </div>
