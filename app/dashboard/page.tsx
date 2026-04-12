@@ -31,6 +31,8 @@ export default function DashboardPage() {
   const [reasons, setReasons] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   // Hydration mismatch 対策: サーバー/クライアントで初期時刻が一致しないため、マウント後に描画します。
   const [headerStamp, setHeaderStamp] = useState<string>("");
 
@@ -47,12 +49,16 @@ export default function DashboardPage() {
         ? current.filter((item) => item !== label)
         : [...current, label],
     );
+    setErrorMessage(null);
+    setSuccessMessage(null);
   }, []);
 
   const submit = async () => {
     if (reasons.length === 0) return;
-
+    setErrorMessage(null);
+    setSuccessMessage(null);
     setSubmitting(true);
+
     try {
       await addDoc(collection(getFirestoreDb(), "calls"), {
         理由: reasons,
@@ -62,19 +68,17 @@ export default function DashboardPage() {
       });
     } catch (err) {
       console.error(err);
-      alert(
+      setErrorMessage(
         "Firebaseへの保存に失敗しました。.env.local の設定と Firestore のルールを確認してください。",
       );
       setSubmitting(false);
       return;
     }
 
-    setSubmitting(false);
-    alert(
-      `【送信完了】\n理由: ${reasons.join("、")}\n特記事項: ${notes || "（なし）"}`,
-    );
+    setSuccessMessage(`送信しました — 理由: ${reasons.join("、")}${notes ? `／${notes}` : ""}`);
     setReasons([]);
     setNotes("");
+    setSubmitting(false);
   };
 
   const sendEnabled = reasons.length > 0 && !submitting;
@@ -148,6 +152,24 @@ export default function DashboardPage() {
               将来的にはここに「マイクで音声入力」ボタンが付きます。
             </p>
           </section>
+
+          {errorMessage && (
+            <p
+              role="alert"
+              className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+            >
+              {errorMessage}
+            </p>
+          )}
+
+          {successMessage && (
+            <p
+              role="status"
+              className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700"
+            >
+              ✓ {successMessage}
+            </p>
+          )}
 
           <button
             type="button"
