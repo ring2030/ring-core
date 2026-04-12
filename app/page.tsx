@@ -7,6 +7,7 @@ import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ElderVideoLetterOverlay } from "@/components/kiyoko/ElderVideoLetterOverlay";
 import { EyedidCalibrationOverlay } from "@/components/kiyoko/EyedidCalibrationOverlay";
 import { BottomNav } from "@/components/kiyoko/BottomNav";
@@ -347,12 +348,18 @@ export default function GrandmaGazePage() {
               <p className="text-[3rem] font-bold text-slate-300">すぐに行くから、待っててね。</p>
             </div>
           ) : (
-            <ConversationView
-              aiText={aiText}
-              isListening={isListening}
-              isThinking={isThinking}
-              onEnd={resetToMain}
-            />
+            <ErrorBoundary fallback={() => (
+              <button onClick={resetToMain} className="px-12 py-6 bg-slate-700 text-slate-200 text-2xl font-bold rounded-full">
+                もどる
+              </button>
+            )}>
+              <ConversationView
+                aiText={aiText}
+                isListening={isListening}
+                isThinking={isThinking}
+                onEnd={resetToMain}
+              />
+            </ErrorBoundary>
           )}
         </div>
       ) : !isCalibrating ? (
