@@ -36,10 +36,7 @@ import {
   saveGazeTuning,
   type GazeTuning,
 } from "@/lib/gaze/tuning";
-
-const SLEEP_TIMEOUT_MS = 10_000;
-const TARGET_SCAN_MS = 120;
-const PROGRESS_TICK_MS = 120;
+import { SLEEP_TIMEOUT_MS, TARGET_SCAN_MS, PROGRESS_TICK_MS } from "@/lib/constants";
 
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });

@@ -5,8 +5,10 @@ import { getEyedidLicenseKey } from "@/lib/gaze/eyedidLicense";
 import {
   CAL_TS_KEY,
   EYEDID_CAL_KEY,
+  EYEDID_CAL_TTL_MS,
 } from "@/lib/gaze/eyedidStorage";
 import { describeEyedidInitError } from "@/lib/gaze/eyedidInitMessage";
+import { GAZE_THROTTLE_MS } from "@/lib/constants";
 import type EasySeeSo from "seeso/easy-seeso";
 
 /** easy-seeso 内部の seeso インスタンスへアクセスし、errCode を取得するための型 */
@@ -21,9 +23,6 @@ type EasySeeSoInternal = EasySeeSo & {
   onCalibrationFinishedBind: unknown;
   onGazeBind: unknown;
 };
-
-const CAL_TTL_MS = 24 * 60 * 60 * 1000;
-const GAZE_THROTTLE_MS = 16;
 
 export type EyedidCalibrationUi = {
   /** SDK が指示する次の注視点（ブラウザ座標系） */
@@ -276,7 +275,7 @@ export function useEyedidGaze({
       const fresh =
         tsRaw != null &&
         !Number.isNaN(parseInt(tsRaw, 10)) &&
-        Date.now() - parseInt(tsRaw, 10) < CAL_TTL_MS;
+        Date.now() - parseInt(tsRaw, 10) < EYEDID_CAL_TTL_MS;
 
       const needCalibration = calibratingRef.current;
 
