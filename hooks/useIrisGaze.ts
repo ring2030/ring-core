@@ -62,6 +62,21 @@ function zoneFromGaze(gazeX: number | null, threshold: number): GazeZone {
 
 const FACE_LOST_RESET_MS = 200;
 
+async function waitForVideoElement(
+  getVideo: () => HTMLVideoElement | null,
+  isCancelled: () => boolean,
+  maxMs = 4000,
+): Promise<HTMLVideoElement | null> {
+  const t0 = performance.now();
+  while (performance.now() - t0 < maxMs) {
+    if (isCancelled()) return null;
+    const v = getVideo();
+    if (v) return v;
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+  }
+  return getVideo();
+}
+
 export function useIrisGaze(options: UseIrisGazeOptions) {
   const {
     dwellMs = 3500,
@@ -192,15 +207,21 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         }
         streamRef.current = stream;
 
-        const video = videoRef.current;
+        const video = await waitForVideoElement(
+          () => videoRef.current,
+          () => localCancel || cancelledRef.current,
+        );
         if (!video) {
           stream.getTracks().forEach((t) => t.stop());
           detector.dispose();
-          setState((s) => ({
-            ...s,
-            error: "ビデオ要素が未準備です。",
-            isReady: false,
-          }));
+          streamRef.current = null;
+          if (!localCancel && !cancelledRef.current) {
+            setState((s) => ({
+              ...s,
+              error: "ビデオ要素が未準備です。ページを再読み込みしてください。",
+              isReady: false,
+            }));
+          }
           return;
         }
 

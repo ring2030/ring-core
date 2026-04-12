@@ -1,8 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* アプリはダーク基調。未スタイル時の「真っ白画面」を防ぐ */
+  --background: #020617;
+  --foreground: #e2e8f0;
 }
 
 @theme inline {
@@ -17,6 +18,12 @@
     --background: #0a0a0a;
     --foreground: #ededed;
   }
+}
+
+html,
+body {
+  min-height: 100%;
+  min-height: 100dvh;
 }
 
 body {

@@ -447,14 +447,15 @@ export default function GrandmaGazePage() {
 
   if (!gazeHydrated) {
     return (
-      <div className="relative min-h-screen bg-slate-900 font-sans overflow-hidden select-none flex flex-col items-center justify-center">
-        <p className="text-slate-400 text-xl">読み込み中…</p>
+      <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
+        <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-500/25 border-t-cyan-400" aria-hidden />
+        <p className="mt-5 text-lg text-cyan-100/85">準備しています…</p>
       </div>
     );
   }
 
   return (
-    <div className="relative min-h-screen bg-slate-900 font-sans overflow-hidden select-none flex flex-col items-center justify-center">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
 
       {!audioReady && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10001] flex items-center gap-2 rounded-full bg-slate-700/90 px-5 py-2.5 text-sm text-slate-300 shadow-lg backdrop-blur-sm pointer-events-none animate-pulse">
