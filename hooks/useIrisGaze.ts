@@ -1,8 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FaceLandmarksDetector } from "@tensorflow-models/face-landmarks-detection";
 import { GAZE_THROTTLE_MS } from "@/lib/constants";
+
+/** @tensorflow-models を型参照だけで import しない（SSR バンドルから除外しやすくする） */
+type FaceLandmarksDetector = {
+  estimateFaces: (
+    input: HTMLVideoElement,
+    estimationConfig?: { flipHorizontal?: boolean; staticImageMode?: boolean },
+  ) => Promise<Array<{ keypoints: Array<{ x: number; y: number }> }>>;
+  dispose: () => void;
+};
 
 export type GazeZone = "left" | "right" | "center" | "none";
 
