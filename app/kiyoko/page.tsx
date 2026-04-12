@@ -19,17 +19,19 @@ export default function KiyokoNurseCallPage() {
   const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [toiletSending, setToiletSending] = useState(false);
   const [toiletSuccess, setToiletSuccess] = useState(false);
+  const [toiletError, setToiletError] = useState<string | null>(null);
 
   const handleToilet = useCallback(async () => {
     if (toiletSending || toiletSuccess) return;
     setToiletSending(true);
+    setToiletError(null);
     try {
       await saveToiletCall();
       setToiletSuccess(true);
       window.setTimeout(() => setToiletSuccess(false), 2800);
     } catch (e) {
       console.error(e);
-      alert(
+      setToiletError(
         "Firebaseへの保存に失敗しました。.env.local の設定と Firestore のルールを確認してください。",
       );
     } finally {
@@ -120,6 +122,22 @@ export default function KiyokoNurseCallPage() {
           </span>
         </GazeHoverSurface>
       </div>
+
+      {toiletError && (
+        <div
+          role="alert"
+          className="fixed bottom-4 left-1/2 z-50 -translate-x-1/2 max-w-sm w-[calc(100%-2rem)] rounded-2xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 shadow-lg"
+        >
+          {toiletError}
+          <button
+            type="button"
+            onClick={() => setToiletError(null)}
+            className="ml-3 font-bold underline"
+          >
+            閉じる
+          </button>
+        </div>
+      )}
 
       <VoiceTriageModal
         open={voiceModalOpen}

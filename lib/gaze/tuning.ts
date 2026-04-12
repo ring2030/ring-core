@@ -53,3 +53,32 @@ export function saveGazeTuning(tuning: GazeTuning): void {
     // ignore
   }
 }
+
+export const TUNING_PRESETS: Array<{ name: string; value: GazeTuning }> = [
+  {
+    name: "安定重視",
+    value: {
+      leftThresholdRatio: 0.4,
+      rightThresholdRatio: 0.6,
+      confirmFrames: 6,
+      releaseFrames: 4,
+      risePerTick: 2,
+      fallPerTick: 1,
+    },
+  },
+  {
+    name: "標準",
+    value: DEFAULT_GAZE_TUNING,
+  },
+  {
+    name: "反応重視",
+    value: {
+      leftThresholdRatio: 0.45,
+      rightThresholdRatio: 0.55,
+      confirmFrames: 3,
+      releaseFrames: 2,
+      risePerTick: 4,
+      fallPerTick: 1,
+    },
+  },
+];

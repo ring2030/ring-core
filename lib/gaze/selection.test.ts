@@ -33,6 +33,20 @@ describe("selectGazeTarget", () => {
     });
     expect(target).toBe("トイレ");
   });
+
+  it("returns null in the top inactive strip (y <= 10% height)", () => {
+    // y=79 is exactly at the boundary for height=800 (10% = 80)
+    expect(selectGazeTarget({ x: 100, y: 79, width: 1200, height: 800 })).toBeNull();
+  });
+
+  it("returns null for non-finite coordinates", () => {
+    expect(selectGazeTarget({ x: NaN, y: 500, width: 1200, height: 800 })).toBeNull();
+    expect(selectGazeTarget({ x: Infinity, y: 500, width: 1200, height: 800 })).toBeNull();
+  });
+
+  it("returns null for negative coordinates (off-screen / not yet acquired)", () => {
+    expect(selectGazeTarget({ x: -100, y: -100, width: 1200, height: 800 })).toBeNull();
+  });
 });
 
 describe("computeNextProgress", () => {

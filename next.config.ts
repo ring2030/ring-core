@@ -1,4 +1,11 @@
 import type { NextConfig } from "next";
+import { validateEnv } from "./lib/validateEnv";
+
+// Warn about missing env vars at server startup instead of silently failing mid-request.
+// Only runs in Node (not in the browser bundle).
+if (typeof window === "undefined") {
+  validateEnv();
+}
 
 const nextConfig: NextConfig = {
   transpilePackages: ["seeso"],

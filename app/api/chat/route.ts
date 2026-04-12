@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { requireServerEnv } from "@/lib/validateEnv";
 
 // ─── トリアージレスポンス型 ────────────────────────────────────
 export interface TriageResponse {
@@ -317,8 +318,7 @@ export async function POST(req: Request) {
       } satisfies TriageResponse);
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error("GEMINI_API_KEY が未設定です");
+    const apiKey = requireServerEnv("GEMINI_API_KEY");
 
     // 直近で 429 が発生した場合は、短時間は外部APIを叩かず即時フォールバック
     if (Date.now() < apiBackoffUntil) {

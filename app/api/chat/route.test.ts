@@ -21,4 +21,30 @@ describe("localTriage", () => {
     const r = localTriage("今日は天気がいいね");
     expect(r.priority).toBe(1);
   });
+
+  it("returns a TriageResponse with all required fields", () => {
+    const r = localTriage("テスト");
+    expect(r).toHaveProperty("response");
+    expect(r).toHaveProperty("summary");
+    expect(r).toHaveProperty("priority");
+    expect(typeof r.response).toBe("string");
+    expect(typeof r.summary).toBe("string");
+    expect(typeof r.priority).toBe("number");
+  });
+
+  it("returns priority 5 for fall wording (倒れ)", () => {
+    expect(localTriage("倒れました").priority).toBe(5);
+  });
+
+  it("returns priority 4 for すぐ来て (urgent summon)", () => {
+    expect(localTriage("すぐ来てください").priority).toBe(4);
+  });
+
+  it("returns priority 3 for お水 (water request)", () => {
+    expect(localTriage("お水が欲しいです").priority).toBe(3);
+  });
+
+  it("handles empty string without throwing", () => {
+    expect(() => localTriage("")).not.toThrow();
+  });
 });
