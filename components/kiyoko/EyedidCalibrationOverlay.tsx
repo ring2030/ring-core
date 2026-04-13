@@ -1,6 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { EyedidCalibrationUi } from "@/hooks/useEyedidGaze";
+
+/** SDK が点を送ってこなくなるまでの待機時間 */
+const CALIBRATION_DOT_TIMEOUT_MS = 15_000;
 
 type Props = {
   calUi: EyedidCalibrationUi;
@@ -12,6 +16,8 @@ type Props = {
   onCameraStart?: () => void;
   /** SDK 再試行（bootstrap を掛け直す） */
   onRetrySdk?: () => void;
+  /** 虹彩モードに切り替える（タイムアウト後の誘導ボタン用） */
+  onSwitchToIris?: () => void;
 };
 
 /**
@@ -27,9 +33,20 @@ export function EyedidCalibrationOverlay({
   showCameraGate = false,
   onCameraStart,
   onRetrySdk,
+  onSwitchToIris,
 }: Props) {
   const { dot, progress } = calUi;
   const p = Math.min(1, Math.max(0, progress));
+
+  // dot が一度も来ないまま CALIBRATION_DOT_TIMEOUT_MS 経過したらタイムアウトエラーを出す
+  const [dotTimedOut, setDotTimedOut] = useState(false);
+  const dotEverReceived = dot !== null || progress > 0;
+
+  useEffect(() => {
+    if (showCameraGate || dotEverReceived) return;
+    const id = setTimeout(() => setDotTimedOut(true), CALIBRATION_DOT_TIMEOUT_MS);
+    return () => clearTimeout(id);
+  }, [showCameraGate, dotEverReceived]);
   const R = 44;
   const C = 2 * Math.PI * R;
 
@@ -81,7 +98,7 @@ export function EyedidCalibrationOverlay({
         )}
       </div>
 
-      {!showCameraGate && dot == null && (
+      {!showCameraGate && dot == null && !dotTimedOut && (
         <div
           className="pointer-events-none absolute inset-0 z-[10000] flex flex-col items-center justify-center gap-4 px-6"
           aria-live="polite"
@@ -90,6 +107,50 @@ export function EyedidCalibrationOverlay({
           <p className="max-w-xl text-center text-lg font-bold text-cyan-100 sm:text-xl">
             点の位置を読み込んでいます。顔を画面の中央付近に入れてください。
           </p>
+        </div>
+      )}
+
+      {!showCameraGate && dot == null && dotTimedOut && (
+        <div
+          className="absolute inset-0 z-[10000] flex flex-col items-center justify-center gap-6 px-8"
+          aria-live="assertive"
+        >
+          <p className="text-5xl">⚠️</p>
+          <p className="max-w-lg text-center text-xl font-bold text-red-300 sm:text-2xl">
+            Eyedid の初期化がタイムアウトしました
+          </p>
+          <p className="max-w-lg text-center text-base text-slate-300 sm:text-lg">
+            ライセンス認証かネットワークに問題がある可能性があります。
+            <br />
+            カメラは動いていますので、<strong className="text-emerald-300">虹彩モード（MediaPipe）</strong>で続行できます。
+          </p>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            {onSwitchToIris && (
+              <button
+                type="button"
+                onClick={onSwitchToIris}
+                className="min-h-[52px] rounded-full bg-emerald-600 px-8 py-3 text-lg font-bold text-white shadow-lg hover:bg-emerald-500"
+              >
+                虹彩モードに切り替える
+              </button>
+            )}
+            {onRetrySdk && (
+              <button
+                type="button"
+                onClick={() => { setDotTimedOut(false); onRetrySdk(); }}
+                className="min-h-[52px] rounded-full border border-slate-500 bg-slate-800 px-6 py-3 text-base text-slate-200 hover:bg-slate-700"
+              >
+                Eyedid を再試行
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-sm text-slate-400 underline underline-offset-4 hover:text-slate-200"
+          >
+            精度なしでスキップ
+          </button>
         </div>
       )}
 

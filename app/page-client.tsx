@@ -293,7 +293,12 @@ export default function GrandmaGazePage() {
     rightProgress: irisRightProgress,
     gazeX: irisGazeX,
     faceDetected: irisFaceDetected,
+    isReady: state_irisReady,
     error: irisError,
+    frameCount: irisFrameCount,
+    resultCount: irisResultCount,
+    kpLen: irisKpLen,
+    videoSize: irisVideoSize,
   } = useIrisGaze({
     enabled: irisEnabled,
     restartKey: irisRestartKey,
@@ -469,7 +474,18 @@ export default function GrandmaGazePage() {
       {inputMode === "eyedid" && gazeMode && (
         <video
           ref={irisVideoRef}
-          className="pointer-events-none fixed left-0 top-0 h-px w-px opacity-0"
+          width={320}
+          height={240}
+          className="pointer-events-none fixed"
+          style={{
+            width: process.env.NODE_ENV === "development" ? 320 : 1,
+            height: process.env.NODE_ENV === "development" ? 240 : 1,
+            top: "50%", left: "50%",
+            transform: "translate(-50%, -60%)",
+            opacity: process.env.NODE_ENV === "development" ? 1 : 0,
+            zIndex: 99998,
+            outline: process.env.NODE_ENV === "development" ? "4px solid red" : "none",
+          }}
           playsInline
           muted
           autoPlay
@@ -487,6 +503,7 @@ export default function GrandmaGazePage() {
             setCameraGateError(null);
             setBootstrapVersion((k) => k + 1);
           }}
+          onSwitchToIris={() => handleGazeEngineChange(true)}
         />
       )}
 
@@ -587,6 +604,23 @@ export default function GrandmaGazePage() {
             />
           )}
 
+          {/* ── 虹彩モード診断パネル（開発時のみ・画面右下に常時表示） ── */}
+          {process.env.NODE_ENV === "development" && inputMode === "eyedid" && gazeMode && (
+            <IrisDebugPanel
+              isReady={state_irisReady}
+              faceDetected={irisFaceDetected ?? false}
+              zone={irisZone}
+              gazeX={irisGazeX}
+              error={irisError}
+              leftProgress={irisLeftProgress}
+              rightProgress={irisRightProgress}
+              frameCount={irisFrameCount}
+              resultCount={irisResultCount}
+              kpLen={irisKpLen}
+              videoSize={irisVideoSize}
+            />
+          )}
+
           <GazeTargetPanel target={displayTarget} progress={displayProgress} />
         </div>
       ) : null}
@@ -596,6 +630,36 @@ export default function GrandmaGazePage() {
       />
 
       {!isSleepMode && <BottomNav />}
+    </div>
+  );
+}
+
+// ── 虹彩モード診断パネル ────────────────────────────────────────────────────
+function IrisDebugPanel({
+  isReady, faceDetected, zone, gazeX, error,
+  leftProgress, rightProgress, frameCount, resultCount, kpLen, videoSize,
+}: {
+  isReady: boolean; faceDetected: boolean; zone: string;
+  gazeX: number; error: string | null; leftProgress: number; rightProgress: number;
+  frameCount: number; resultCount: number; kpLen: number;
+  videoSize: { w: number; h: number; paused: boolean; brightness: number };
+}) {
+  return (
+    <div className="fixed bottom-4 right-4 z-[99999] w-72 rounded-xl border border-cyan-700 bg-slate-900/95 p-3 font-mono text-xs text-cyan-200 shadow-2xl backdrop-blur">
+      <p className="mb-1 text-sm font-bold text-cyan-300">🔬 虹彩デバッグ</p>
+      <p>isReady: <span className={isReady ? "text-green-400" : "text-red-400"}>{String(isReady)}</span></p>
+      <p>
+        video: <span className={videoSize.w > 0 ? "text-green-400" : "text-red-400"}>{videoSize.w}×{videoSize.h}</span>
+        {" "}<span className={videoSize.paused ? "text-red-400" : "text-green-400"}>{videoSize.paused ? "停止中" : "再生中"}</span>
+        {" "}明度:<span className={videoSize.brightness > 5 ? "text-green-400" : "text-red-400"}>{videoSize.brightness}</span>
+      </p>
+      <p>frames送信: <span className="text-white">{frameCount}</span> / onResults: <span className={resultCount > 0 ? "text-green-400" : "text-red-400"}>{resultCount}</span></p>
+      <p>ランドマーク数(kpLen): <span className={kpLen > 0 ? "text-green-400" : "text-red-400"}>{kpLen}</span></p>
+      <p>faceDetected: <span className={faceDetected ? "text-green-400" : "text-yellow-400"}>{String(faceDetected)}</span></p>
+      <p>zone: <span className="text-white">{zone}</span></p>
+      <p>gazeX: <span className="text-white">{gazeX.toFixed(3)}</span></p>
+      <p>L: <span className="text-orange-300">{(leftProgress * 100).toFixed(0)}%</span> / R: <span className="text-blue-300">{(rightProgress * 100).toFixed(0)}%</span></p>
+      {error && <p className="mt-1 break-all text-red-400">⚠️ {error}</p>}
     </div>
   );
 }

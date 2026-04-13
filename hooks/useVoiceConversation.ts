@@ -39,7 +39,7 @@ export function useVoiceConversation({
   const [isThinking, setIsThinking] = useState(false);
 
   const onEndRef = useRef(onEnd);
-  onEndRef.current = onEnd;
+  useEffect(() => { onEndRef.current = onEnd; });
 
   useEffect(() => {
     if (!active) return;
@@ -243,6 +243,7 @@ export function useVoiceConversation({
       synth.cancel();
       if (recognition) recognition.abort();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active]); // refs are stable objects; only `active` meaningfully changes
 
   return { aiText, isListening, isThinking };
