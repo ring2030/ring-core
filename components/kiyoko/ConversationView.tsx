@@ -1,5 +1,7 @@
 "use client";
 
+import { Mic, Sparkles } from "lucide-react";
+
 type Props = {
   aiText: string;
   isListening: boolean;
@@ -8,40 +10,57 @@ type Props = {
 };
 
 export function ConversationView({ aiText, isListening, isThinking, onEnd }: Props) {
+  const phase = isListening ? "listen" : isThinking ? "think" : "speak";
+
   return (
-    <div className="flex flex-col items-center justify-center w-full h-full px-8 animate-in zoom-in duration-500">
-      <div className="flex flex-col items-center w-full max-w-5xl">
+    <div className="flex h-full w-full animate-in zoom-in flex-col items-center justify-center duration-500">
+      <div className="flex w-full max-w-5xl flex-col items-center px-6">
         <div
-          className={`mb-8 px-8 py-4 rounded-full text-2xl font-bold transition-colors ${
-            isListening
-              ? "bg-red-900/50 text-red-400 border-2 border-red-700 animate-pulse"
-              : isThinking
-                ? "bg-blue-900/50 text-blue-400 border-2 border-blue-700 animate-bounce"
-                : "bg-transparent text-transparent"
+          className={`mb-6 flex items-center gap-2 rounded-full border px-5 py-2 text-base font-semibold transition-colors sm:text-lg ${
+            phase === "listen"
+              ? "border-rose-500/50 bg-rose-950/50 text-rose-200"
+              : phase === "think"
+                ? "border-sky-500/50 bg-sky-950/50 text-sky-200"
+                : "border-transparent bg-transparent text-transparent"
           }`}
+          aria-live="polite"
         >
-          {isListening ? "🔴 声を聴いています..." : isThinking ? "🧠 考えています..." : ""}
+          {phase === "listen" && (
+            <>
+              <Mic className="size-5 shrink-0 text-rose-300" strokeWidth={2} aria-hidden />
+              お話を聞いています
+            </>
+          )}
+          {phase === "think" && (
+            <>
+              <Sparkles className="size-5 shrink-0 text-sky-300" strokeWidth={2} aria-hidden />
+              考えています
+            </>
+          )}
         </div>
-        <h1 className="text-[3.5rem] font-black text-blue-300 mb-16 text-center leading-snug w-full px-8 min-h-[10rem]">
+        <h1 className="mb-12 min-h-[8rem] w-full px-4 text-center text-[clamp(1.75rem,6vmin,3.5rem)] font-black leading-snug text-slate-100">
           {aiText}
         </h1>
-        <div className="relative w-80 h-80 flex items-center justify-center mb-20">
+        <div className="relative mb-16 flex h-72 w-72 items-center justify-center sm:h-80 sm:w-80">
           <div
             className={`absolute inset-0 rounded-full blur-3xl transition-all duration-700 ${
-              isListening
-                ? "bg-red-900 animate-pulse scale-110"
-                : isThinking
-                  ? "bg-yellow-900"
-                  : "bg-blue-900 animate-[pulse_3s_ease-in-out_infinite]"
+              phase === "listen"
+                ? "scale-110 bg-rose-900/80 animate-pulse"
+                : phase === "think"
+                  ? "bg-amber-900/70"
+                  : "animate-[pulse_3s_ease-in-out_infinite] bg-blue-900/60"
             }`}
           />
-          <div className="relative w-64 h-64 bg-gradient-to-br from-blue-900 to-slate-800 border-8 border-blue-700/60 rounded-full shadow-2xl flex items-center justify-center animate-[bounce_4s_ease-in-out_infinite]">
-            <div className="text-[5rem] text-blue-400 font-bold">AI</div>
+          <div className="relative flex h-56 w-56 items-center justify-center rounded-full border-8 border-blue-600/45 bg-gradient-to-br from-slate-800 to-slate-950 shadow-2xl sm:h-64 sm:w-64">
+            <span className="text-5xl font-black tracking-tight text-blue-300/95 sm:text-6xl">
+              AI
+            </span>
           </div>
         </div>
         <button
+          type="button"
           onClick={onEnd}
-          className="px-16 py-8 bg-slate-700 text-slate-200 text-[3rem] font-bold rounded-full shadow-md active:scale-95 transition-all hover:bg-slate-600"
+          className="min-h-[56px] rounded-full bg-slate-700 px-14 py-4 text-2xl font-bold text-slate-100 shadow-lg transition hover:bg-slate-600 active:scale-[0.98]"
         >
           おわる
         </button>

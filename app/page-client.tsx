@@ -5,24 +5,23 @@ import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
-import { useIrisGaze, type CameraDevice } from "@/hooks/useIrisGaze";
+import { useIrisGaze } from "@/hooks/useIrisGaze";
 import { usePointerGaze } from "@/hooks/usePointerGaze";
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ElderVideoLetterOverlay } from "@/components/kiyoko/ElderVideoLetterOverlay";
 import { EyedidCalibrationOverlay } from "@/components/kiyoko/EyedidCalibrationOverlay";
-import { BottomNav } from "@/components/kiyoko/BottomNav";
 import { ConversationView } from "@/components/kiyoko/ConversationView";
-import { GazeDebugOverlay } from "@/components/kiyoko/GazeDebugOverlay";
 import { GazeStatusBar } from "@/components/kiyoko/GazeStatusBar";
 import { GazeTargetPanel } from "@/components/kiyoko/GazeTargetPanel";
 import { SleepOverlay } from "@/components/kiyoko/SleepOverlay";
-import { TuningPanel } from "@/components/kiyoko/TuningPanel";
 import {
   CAL_TS_KEY,
   EYEDID_CAL_KEY,
   hasFreshEyedidCalibration,
 } from "@/lib/gaze/eyedidStorage";
+import { getStoredGazeEngine, setStoredGazeEngine } from "@/lib/gaze/gazeEngineStorage";
+import { getStoredIrisCameraId } from "@/lib/gaze/irisCameraStorage";
 import {
   computeNextProgress,
   INITIAL_TARGET_STABILITY,
@@ -33,7 +32,6 @@ import {
 import {
   DEFAULT_GAZE_TUNING,
   loadGazeTuning,
-  normalizeGazeTuning,
   saveGazeTuning,
   type GazeTuning,
 } from "@/lib/gaze/tuning";
@@ -43,6 +41,7 @@ import {
   setStoredInputMode,
   type NurseInputMode,
 } from "@/lib/gaze/inputModeStorage";
+import { Volume2 } from "lucide-react";
 
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });
@@ -57,29 +56,31 @@ export default function GrandmaGazePage() {
   const [windowWidth, setWindowWidth] = useState(1000);
   const [windowHeight, setWindowHeight] = useState(700);
   const [gazeTuning, setGazeTuning] = useState<GazeTuning>(DEFAULT_GAZE_TUNING);
-  const [showTuning, setShowTuning] = useState(false);
-  /** true: MediaPipe 虹彩 / false: Eyedid（seeso）ロールバック用 */
+  /** true: MediaPipe 虹彩 / false: Eyedid */
   const [gazeMode, setGazeMode] = useState(true);
   const [irisRestartKey, setIrisRestartKey] = useState(0);
   const [irisCameraDeviceId, setIrisCameraDeviceId] = useState<string | undefined>(undefined);
-  const irisDebugCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // キャリブ／カメラゲートは localStorage 依存のため、SSR と同じ初期値にしてハイドレーションずれを防ぐ
   const [gazeHydrated, setGazeHydrated] = useState(false);
   const [isCalibrating, setIsCalibrating] = useState(true);
-  /** キャリブ画面では「カメラを開始」タップ後に true（キャリブ済みでメインだけのときも true） */
   const [cameraSessionStarted, setCameraSessionStarted] = useState(false);
   const [cameraGateError, setCameraGateError] = useState<string | null>(null);
+  const [bootstrapVersion, setBootstrapVersion] = useState(0);
 
   useEffect(() => {
     const mode = getStoredInputMode();
+    const engine = getStoredGazeEngine();
+    const useIris = engine === "iris";
     setInputMode(mode);
+    setGazeMode(useIris);
     setGazeTuning(loadGazeTuning());
+    setIrisCameraDeviceId(getStoredIrisCameraId());
+
     if (mode === "pointer") {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
       setStatusMessage("タッチ・マウスで操作");
-    } else if (gazeMode) {
+    } else if (useIris) {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
       setStatusMessage("視線を検知中…");
@@ -87,11 +88,27 @@ export default function GrandmaGazePage() {
       const fresh = hasFreshEyedidCalibration();
       setIsCalibrating(!fresh);
       setCameraSessionStarted(fresh);
+      setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています...");
     }
     setGazeHydrated(true);
-    // gazeMode は初回マウント時の値のみ（常に true）でよい — 切替は handleGazeEngineChange が担当
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!gazeHydrated || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("recalibrate") !== "1") return;
+    try {
+      localStorage.removeItem(CAL_TS_KEY);
+      localStorage.removeItem(EYEDID_CAL_KEY);
+    } catch {
+      /* ignore */
+    }
+    setCameraGateError(null);
+    setCameraSessionStarted(false);
+    setIsCalibrating(true);
+    setBootstrapVersion((k) => k + 1);
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [gazeHydrated]);
 
   const handleInputModeChange = useCallback((mode: NurseInputMode) => {
     setStoredInputMode(mode);
@@ -117,6 +134,7 @@ export default function GrandmaGazePage() {
   }, [gazeMode]);
 
   const handleGazeEngineChange = useCallback((useIris: boolean) => {
+    setStoredGazeEngine(useIris ? "iris" : "eyedid");
     setGazeMode(useIris);
     setCameraGateError(null);
     if (useIris) {
@@ -138,7 +156,6 @@ export default function GrandmaGazePage() {
     saveGazeTuning(gazeTuning);
   }, [gazeHydrated, gazeTuning]);
 
-  const [bootstrapVersion, setBootstrapVersion] = useState(0);
   const [isSleepMode, setIsSleepMode] = useState(false);
   const sleepTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -189,12 +206,8 @@ export default function GrandmaGazePage() {
   const {
     licenseError: eyedidLicenseError,
     initError: eyedidInitError,
-    blinkCount: eyedidBlinkCount,
-    attentionScore: eyedidAttention,
-    trackingState: eyedidTrackingState,
     calUi,
     skipCalibration,
-    setCameraPlacement,
   } = useEyedidGaze({
     isSleepMode,
     isCalibrating,
@@ -217,7 +230,7 @@ export default function GrandmaGazePage() {
     setProgress(0);
     setTarget(null);
     setGazePoint({ x: -100, y: -100 });
-    setStatusMessage("視線を検知中...");
+    setStatusMessage("視線を検知中…");
   }, []);
 
   const { aiText, isListening, isThinking } = useVoiceConversation({
@@ -297,16 +310,9 @@ export default function GrandmaGazePage() {
     faceDetected: irisFaceDetected,
     isReady: state_irisReady,
     error: irisError,
-    frameCount: irisFrameCount,
-    resultCount: irisResultCount,
-    kpLen: irisKpLen,
-    videoSize: irisVideoSize,
-    initStatus: irisInitStatus,
-    cameras: irisCameras,
   } = useIrisGaze({
     enabled: irisEnabled,
     restartKey: irisRestartKey,
-    debugCanvasRef: irisDebugCanvasRef,
     cameraDeviceId: irisCameraDeviceId,
     onLeftSelect: () => {
       if (hasSubmittedRef.current) return;
@@ -368,7 +374,6 @@ export default function GrandmaGazePage() {
   const targetRef = useRef<"トイレ" | "お話" | null>(null);
   targetRef.current = target;
   const targetStabilityRef = useRef<TargetStabilityState>(INITIAL_TARGET_STABILITY);
-  const [debugRawHit, setDebugRawHit] = useState<"トイレ" | "お話" | null>(null);
 
   useEffect(() => {
     if (!legacyGazePipeline || isSuccess || isCalibrating || isSleepMode) return;
@@ -386,7 +391,6 @@ export default function GrandmaGazePage() {
         confirmFrames: gazeTuning.confirmFrames,
         releaseFrames: gazeTuning.releaseFrames,
       });
-      setDebugRawHit(rawHit);
       const next = targetStabilityRef.current.locked;
       setTarget((prev) => (prev === next ? prev : next));
     }, TARGET_SCAN_MS);
@@ -405,7 +409,6 @@ export default function GrandmaGazePage() {
     if (!isSuccess && !isCalibrating && !isSleepMode) return;
     targetStabilityRef.current = INITIAL_TARGET_STABILITY;
     setTarget(null);
-    setDebugRawHit(null);
   }, [isSuccess, isCalibrating, isSleepMode]);
 
   useEffect(() => {
@@ -456,6 +459,24 @@ export default function GrandmaGazePage() {
         : 0
     : progress;
 
+  const combinedError =
+    inputMode === "eyedid" ? trackingError ?? cameraError : cameraError;
+
+  const faceHint =
+    inputMode === "eyedid" &&
+    gazeMode &&
+    state_irisReady &&
+    !irisFaceDetected &&
+    !combinedError
+      ? "顔を画面に向けてください"
+      : null;
+
+  const showCameraRestartHint =
+    Boolean(!combinedError &&
+      inputMode === "eyedid" &&
+      !gazeMode &&
+      (statusMessage.includes("カメラを準備") || statusMessage.includes("準備しています")));
+
   if (!gazeHydrated) {
     return (
       <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
@@ -469,9 +490,9 @@ export default function GrandmaGazePage() {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
 
       {!audioReady && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[10001] flex items-center gap-2 rounded-full bg-slate-700/90 px-5 py-2.5 text-sm text-slate-300 shadow-lg backdrop-blur-sm pointer-events-none animate-pulse">
-          <span>🔔</span>
-          <span>タップで通知音を有効化</span>
+        <div className="pointer-events-none fixed bottom-8 left-1/2 z-[10001] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/90 px-5 py-2.5 text-sm text-slate-200 shadow-lg backdrop-blur-md animate-pulse">
+          <Volume2 className="size-4 shrink-0 text-amber-300/90" strokeWidth={2} aria-hidden />
+          <span>画面を一度タップすると音が鳴ります</span>
         </div>
       )}
 
@@ -484,13 +505,12 @@ export default function GrandmaGazePage() {
           height={240}
           className="pointer-events-none fixed"
           style={{
-            width: process.env.NODE_ENV === "development" ? 320 : 1,
-            height: process.env.NODE_ENV === "development" ? 240 : 1,
-            top: "50%", left: "50%",
-            transform: "translate(-50%, -60%)",
-            opacity: process.env.NODE_ENV === "development" ? 1 : 0,
-            zIndex: 99998,
-            outline: process.env.NODE_ENV === "development" ? "4px solid red" : "none",
+            width: 1,
+            height: 1,
+            top: 0,
+            left: 0,
+            opacity: 0,
+            zIndex: 0,
           }}
           playsInline
           muted
@@ -515,7 +535,7 @@ export default function GrandmaGazePage() {
 
       {!isSuccess && !isCalibrating && (
         <div
-          className="fixed w-48 h-48 rounded-full bg-amber-400 opacity-40 mix-blend-screen pointer-events-none transition-all duration-100 blur-2xl animate-pulse"
+          className="pointer-events-none fixed h-48 w-48 animate-pulse rounded-full bg-amber-300/35 mix-blend-screen blur-2xl transition-all duration-100"
           style={{
             left: displayGazeX - 96,
             top: displayGazeY - 96,
@@ -526,20 +546,30 @@ export default function GrandmaGazePage() {
       )}
 
       {isSuccess ? (
-        <div className="flex flex-col items-center justify-center w-full h-full px-8">
+        <div className="flex h-full w-full flex-col items-center justify-center px-8">
           {sentReason === "トイレ" ? (
-            <div className="bg-slate-800 p-24 rounded-[4rem] shadow-2xl text-center border-8 border-orange-700/60">
-              <h1 className="text-[6rem] font-black text-orange-400 mb-8 leading-tight">
-                みっちゃんさんに<br />伝えましたよ！
+            <div className="rounded-[4rem] border-8 border-orange-600/45 bg-gradient-to-br from-slate-900 to-slate-950 p-16 text-center shadow-2xl sm:p-24">
+              <h1 className="mb-8 text-[clamp(2.5rem,10vmin,6rem)] font-black leading-tight text-orange-300">
+                みっちゃんさんに
+                <br />
+                伝えましたよ！
               </h1>
-              <p className="text-[3rem] font-bold text-slate-300">すぐに行くから、待っててね。</p>
+              <p className="text-[clamp(1.25rem,4vmin,3rem)] font-bold text-slate-300">
+                すぐに行くから、待っててね。
+              </p>
             </div>
           ) : (
-            <ErrorBoundary fallback={() => (
-              <button onClick={resetToMain} className="px-12 py-6 bg-slate-700 text-slate-200 text-2xl font-bold rounded-full">
-                もどる
-              </button>
-            )}>
+            <ErrorBoundary
+              fallback={() => (
+                <button
+                  type="button"
+                  onClick={resetToMain}
+                  className="rounded-full bg-slate-700 px-12 py-6 text-2xl font-bold text-slate-200"
+                >
+                  もどる
+                </button>
+              )}
+            >
               <ConversationView
                 aiText={aiText}
                 isListening={isListening}
@@ -550,20 +580,9 @@ export default function GrandmaGazePage() {
           )}
         </div>
       ) : !isCalibrating ? (
-        <div className="flex w-full flex-col items-center justify-center px-6 pb-8 pt-28 sm:px-12 sm:pt-32">
+        <div className="flex w-full flex-col items-center justify-center px-5 pb-10 pt-20 sm:px-10 sm:pt-24">
           <GazeStatusBar
-            inputMode={inputMode}
-            onInputModeChange={handleInputModeChange}
-            gazeMode={gazeMode}
-            onGazeEngineChange={handleGazeEngineChange}
-            statusMessage={statusMessage}
-            trackingError={inputMode === "eyedid" ? trackingError : null}
-            cameraError={cameraError}
-            trackingState={gazeMode ? null : eyedidTrackingState}
-            irisFaceDetected={
-              inputMode === "eyedid" && gazeMode ? irisFaceDetected : null
-            }
-            gazePointX={displayGazeX}
+            errorMessage={combinedError}
             onRestartCamera={() => {
               setCameraError(null);
               setStatusMessage("カメラを準備しています...");
@@ -573,67 +592,10 @@ export default function GrandmaGazePage() {
                 setBootstrapVersion((k) => k + 1);
               }
             }}
-            onRecalibrate={() => {
-              try {
-                localStorage.removeItem(CAL_TS_KEY);
-                localStorage.removeItem(EYEDID_CAL_KEY);
-              } catch { /* ignore */ }
-              setCameraGateError(null);
-              setCameraSessionStarted(false);
-              setIsCalibrating(true);
-              setBootstrapVersion((k) => k + 1);
-            }}
-            onCameraPlacement={setCameraPlacement}
-            showTuning={showTuning}
-            onToggleTuning={() => setShowTuning((v) => !v)}
+            onUsePointerInstead={() => handleInputModeChange("pointer")}
+            faceHint={faceHint}
+            showCameraRestartHint={showCameraRestartHint}
           />
-
-          {showTuning && (
-            <TuningPanel
-              gazeTuning={gazeTuning}
-              onTuningChange={(t) => setGazeTuning(normalizeGazeTuning(t))}
-              onClose={() => setShowTuning(false)}
-            />
-          )}
-
-          {process.env.NODE_ENV === "development" &&
-            inputMode === "eyedid" &&
-            !gazeMode &&
-            !trackingError && (
-            <GazeDebugOverlay
-              blinkCount={eyedidBlinkCount}
-              attentionScore={eyedidAttention}
-              trackingState={eyedidTrackingState}
-              debugRawHit={debugRawHit}
-              stability={targetStabilityRef.current}
-              confirmFrames={gazeTuning.confirmFrames}
-            />
-          )}
-
-          {/* ── 虹彩モード診断パネル（開発時のみ・画面右下に常時表示） ── */}
-          {process.env.NODE_ENV === "development" && inputMode === "eyedid" && gazeMode && (
-            <IrisDebugPanel
-              isReady={state_irisReady}
-              faceDetected={irisFaceDetected ?? false}
-              zone={irisZone}
-              gazeX={irisGazeX}
-              error={irisError}
-              initStatus={irisInitStatus}
-              leftProgress={irisLeftProgress}
-              rightProgress={irisRightProgress}
-              frameCount={irisFrameCount}
-              resultCount={irisResultCount}
-              kpLen={irisKpLen}
-              videoSize={irisVideoSize}
-              debugCanvasRef={irisDebugCanvasRef}
-              cameras={irisCameras}
-              selectedCameraId={irisCameraDeviceId}
-              onSelectCamera={(id) => {
-                setIrisCameraDeviceId(id);
-                setIrisRestartKey((k) => k + 1);
-              }}
-            />
-          )}
 
           <GazeTargetPanel target={displayTarget} progress={displayProgress} />
         </div>
@@ -642,79 +604,6 @@ export default function GrandmaGazePage() {
       <ElderVideoLetterOverlay
         suppressReplayUi={isSuccess || isCalibrating || isSleepMode}
       />
-
-      {!isSleepMode && <BottomNav />}
-    </div>
-  );
-}
-
-// ── 虹彩モード診断パネル ────────────────────────────────────────────────────
-function IrisDebugPanel({
-  isReady, faceDetected, zone, gazeX, error, initStatus,
-  leftProgress, rightProgress, frameCount, resultCount, kpLen, videoSize,
-  debugCanvasRef, cameras, selectedCameraId, onSelectCamera,
-}: {
-  isReady: boolean; faceDetected: boolean; zone: string;
-  gazeX: number; error: string | null; initStatus: string;
-  leftProgress: number; rightProgress: number;
-  frameCount: number; resultCount: number; kpLen: number;
-  videoSize: { w: number; h: number; paused: boolean; brightness: number };
-  debugCanvasRef: React.RefObject<HTMLCanvasElement | null>;
-  cameras: CameraDevice[];
-  selectedCameraId: string | undefined;
-  onSelectCamera: (id: string) => void;
-}) {
-  return (
-    <div className="fixed bottom-4 right-4 z-[99999] w-80 rounded-xl border border-cyan-700 bg-slate-900/95 p-3 font-mono text-xs text-cyan-200 shadow-2xl backdrop-blur">
-      <p className="mb-1 text-sm font-bold text-cyan-300">🔬 顔検出デバッグ</p>
-
-      {/* カメラ映像＋検出結果キャンバス */}
-      <div className="mb-2 overflow-hidden rounded-lg border border-slate-600 bg-black" style={{ aspectRatio: "4/3" }}>
-        <canvas
-          ref={debugCanvasRef}
-          className="h-full w-full object-contain"
-          style={{ imageRendering: "pixelated" }}
-        />
-      </div>
-
-      {/* カメラ切替 */}
-      {cameras.length > 0 && (
-        <div className="mb-2">
-          <p className="mb-1 text-slate-400">使用カメラ ({cameras.length}台検出):</p>
-          {cameras.map((cam) => (
-            <button
-              key={cam.deviceId}
-              type="button"
-              onClick={() => onSelectCamera(cam.deviceId)}
-              className={`mb-1 block w-full truncate rounded px-2 py-1 text-left text-xs ${
-                (selectedCameraId ?? "") === cam.deviceId || (!selectedCameraId && cameras[0]?.deviceId === cam.deviceId)
-                  ? "bg-cyan-700 text-white"
-                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-              }`}
-            >
-              {cam.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!isReady && initStatus && (
-        <p className="mb-1 text-yellow-300 animate-pulse">{initStatus}</p>
-      )}
-
-      <p>isReady: <span className={isReady ? "text-green-400" : "text-red-400"}>{String(isReady)}</span></p>
-      <p>
-        video: <span className={videoSize.w > 0 ? "text-green-400" : "text-red-400"}>{videoSize.w}×{videoSize.h}</span>
-        {" "}<span className={videoSize.paused ? "text-red-400" : "text-green-400"}>{videoSize.paused ? "停止中" : "再生中"}</span>
-        {" "}明度:<span className={videoSize.brightness > 5 ? "text-green-400" : "text-red-400"}>{videoSize.brightness}</span>
-      </p>
-      <p>frames: <span className="text-white">{frameCount}</span> / results: <span className={resultCount > 0 ? "text-green-400" : "text-red-400"}>{resultCount}</span></p>
-      <p>kpLen: <span className={kpLen > 0 ? "text-green-400" : "text-red-400"}>{kpLen}</span>
-        {" "}<span className="text-slate-400">(検出時6、未検出-1)</span></p>
-      <p>faceDetected: <span className={faceDetected ? "text-green-400" : "text-yellow-400"}>{String(faceDetected)}</span></p>
-      <p>zone: <span className="text-white">{zone}</span> gazeX: <span className="text-white">{gazeX.toFixed(3)}</span></p>
-      <p>L: <span className="text-orange-300">{(leftProgress * 100).toFixed(0)}%</span> / R: <span className="text-blue-300">{(rightProgress * 100).toFixed(0)}%</span></p>
-      {error && <p className="mt-1 break-all text-red-400">⚠️ {error}</p>}
     </div>
   );
 }

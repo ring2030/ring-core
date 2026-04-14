@@ -8,6 +8,7 @@ import {
   EYEDID_CAL_TTL_MS,
 } from "@/lib/gaze/eyedidStorage";
 import { describeEyedidInitError } from "@/lib/gaze/eyedidInitMessage";
+import { getEyedidCameraOnTop } from "@/lib/gaze/eyedidCameraPlacementStorage";
 import { GAZE_THROTTLE_MS } from "@/lib/constants";
 import type EasySeeSo from "seeso/easy-seeso";
 
@@ -254,6 +255,19 @@ export function useEyedidGaze({
           return;
         }
         trackingActiveRef.current = true;
+        const placed = getEyedidCameraOnTop();
+        if (placed !== null && !cancelled) {
+          try {
+            const x = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 0;
+            (
+              easy as unknown as {
+                setCameraPosition: (cameraX: number, cameraOnTop: boolean) => void;
+              }
+            ).setCameraPosition(x, placed);
+          } catch (e) {
+            console.error("[Eyedid] setCameraPosition (stored preference)", e);
+          }
+        }
       } catch (e: unknown) {
         const name = e instanceof Error ? e.name : "";
         const msg =

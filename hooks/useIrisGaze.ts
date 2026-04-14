@@ -445,7 +445,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       stopAll();
       setInitStatus("");
     };
-  }, [enabled, restartKey, stopAll, bumpActivity, debugCanvasRef]);
+  }, [enabled, restartKey, stopAll, bumpActivity, debugCanvasRef, cameraDeviceId]);
 
   return { videoRef, frameCount, resultCount, kpLen, videoSize, initStatus, cameras, ...state };
 }
