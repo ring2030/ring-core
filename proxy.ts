@@ -32,12 +32,6 @@ export function proxy(request: NextRequest) {
     }
   }
 
-  if (path === "/") {
-    if (!session || (session.role !== "patient" && session.role !== "nurse")) {
-      return redirectToLogin(request);
-    }
-  }
-
   return NextResponse.next();
 }
 
