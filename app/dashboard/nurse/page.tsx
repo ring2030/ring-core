@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { collection, getFirestore, onSnapshot, orderBy, query } from "firebase/firestore";
+import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import {
   BarChart, Bar, CartesianGrid, Cell, Legend, PieChart, Pie,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -18,21 +17,7 @@ import PatientCard, { type PatientCardData } from "@/components/nurse/PatientCar
 import ActivityLog,  { type CallRow }        from "@/components/nurse/ActivityLog";
 import SeedDataButton from "@/components/nurse/SeedDataButton";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
-
-// ─── Firebase ────────────────────────────────────────────────────────────────
-
-const firebaseConfig = {
-  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId:         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket:     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-const app  = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const auth = getAuth(app);
-const db   = getFirestore(app);
+import { getFirebaseAuth, getFirestoreDb } from "@/lib/firebase";
 
 // ─── 患者マスタ ───────────────────────────────────────────────────────────────
 
@@ -110,6 +95,21 @@ export default function NurseDashboard() {
   const [loading,        setLoading]        = useState(true);
   const [toasts,         setToasts]         = useState<Toast[]>([]);
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const initResult = useMemo(() => {
+    try {
+      return {
+        auth: getFirebaseAuth(),
+        db: getFirestoreDb(),
+        initError: null as string | null,
+      };
+    } catch (e: unknown) {
+      return {
+        auth: null,
+        db: null,
+        initError: e instanceof Error ? e.message : "Firebase 初期化に失敗しました。",
+      };
+    }
+  }, []);
 
   const isInitialLoad     = useRef(true);
   const isAudioEnabledRef = useRef(false);
@@ -149,13 +149,16 @@ export default function NurseDashboard() {
 
   // ── 認証 ─────────────────────────────────────────────────────────────────
   useEffect(() => {
-    signInAnonymously(auth).catch(console.error);
-    return onAuthStateChanged(auth, () => {});
-  }, []);
+    if (!initResult.auth) return;
+    signInAnonymously(initResult.auth).catch(console.error);
+    return onAuthStateChanged(initResult.auth, () => {});
+  }, [initResult]);
 
   // ── Firestore ────────────────────────────────────────────────────────────
   useEffect(() => {
-    const q = query(collection(db, "calls"), orderBy("送信日時", "desc"));
+    if (!initResult.db) return;
+
+    const q = query(collection(initResult.db, "calls"), orderBy("送信日時", "desc"));
     return onSnapshot(q, (snap) => {
       setIsOnline(true);
 
@@ -192,7 +195,7 @@ export default function NurseDashboard() {
       }));
       setLoading(false);
     }, () => setIsOnline(false));
-  }, [playChime]);
+  }, [playChime, initResult]);
 
   // ── 患者データ集計 ────────────────────────────────────────────────────────
   const patientData = useMemo((): PatientCardData[] => {
@@ -224,6 +227,15 @@ export default function NurseDashboard() {
   }, [calls]);
 
   // ─── ローディング ─────────────────────────────────────────────────────────
+  if (initResult.initError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50 px-6 text-center">
+        <AlertTriangle className="h-10 w-10 text-red-500" />
+        <h1 className="text-xl font-black text-stone-800">ナースステーションを開けませんでした</h1>
+        <p className="max-w-xl text-sm text-stone-600">{initResult.initError}</p>
+      </div>
+    );
+  }
   if (loading) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50">

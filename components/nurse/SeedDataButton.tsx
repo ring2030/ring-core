@@ -1,28 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { initializeApp, getApps } from "firebase/app";
-import { getFirestore, writeBatch, doc, collection, Timestamp } from "firebase/firestore";
+import { writeBatch, doc, collection, Timestamp } from "firebase/firestore";
 import { DatabaseZap, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 import {
   getDocs,
   query,
   orderBy,
 } from "firebase/firestore";
-
-// ─── Firebase ──────────────────────────────────────────────────────────────
-
-const firebaseConfig = {
-  apiKey:            process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain:        process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId:         process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket:     process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId:             process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
-
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db  = getFirestore(app);
+import { getFirestoreDb } from "@/lib/firebase";
 
 // ─── シードデータテンプレート ──────────────────────────────────────────────
 
@@ -120,6 +106,7 @@ export default function SeedDataButton() {
     setMessage("シードデータを生成中...");
 
     try {
+      const db = getFirestoreDb();
       // 1日あたりの件数分布
       const dailyCounts = [12, 14, 13, 16, 15, 18, 17]; // 合計 105
       const batchDocs: { ts: Timestamp; tpl: Template }[] = [];
@@ -167,6 +154,7 @@ export default function SeedDataButton() {
     setStatus("deleting");
     setMessage("削除中...");
     try {
+      const db = getFirestoreDb();
       const snap = await getDocs(query(collection(db, "calls"), orderBy("送信日時", "desc")));
       const CHUNK = 50;
       for (let i = 0; i < snap.docs.length; i += CHUNK) {

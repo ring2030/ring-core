@@ -1,4 +1,5 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
+import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
@@ -11,7 +12,7 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-function getFirebaseApp(): FirebaseApp {
+export function getFirebaseApp(): FirebaseApp {
   if (typeof window === "undefined") {
     throw new Error("Firebase client SDK is browser-only.");
   }
@@ -31,6 +32,7 @@ function getFirebaseApp(): FirebaseApp {
 
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let auth: Auth | null = null;
 
 export function getFirestoreDb(): Firestore {
   if (typeof window === "undefined") {
@@ -50,4 +52,14 @@ export function getFirebaseStorage(): FirebaseStorage {
     storage = getStorage(getFirebaseApp());
   }
   return storage;
+}
+
+export function getFirebaseAuth(): Auth {
+  if (typeof window === "undefined") {
+    throw new Error("Firebase Auth is browser-only.");
+  }
+  if (!auth) {
+    auth = getAuth(getFirebaseApp());
+  }
+  return auth;
 }
