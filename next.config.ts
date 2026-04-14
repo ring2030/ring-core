@@ -4,6 +4,7 @@ import { validateEnv } from "./lib/validateEnv";
 
 /** Turbopack は Windows の絶対パス alias を未対応のため相対パスで渡す */
 const mediapipeFaceMeshShim = "./lib/mediapipe-face-mesh-shim.ts";
+const mediapipeFaceDetectionShim = "./lib/mediapipe-face-detection-shim.ts";
 
 // Warn about missing env vars at server startup instead of silently failing mid-request.
 // Only runs in Node (not in the browser bundle).
@@ -16,6 +17,7 @@ const nextConfig: NextConfig = {
   turbopack: {
     resolveAlias: {
       "@mediapipe/face_mesh": mediapipeFaceMeshShim,
+      "@mediapipe/face_detection": mediapipeFaceDetectionShim,
     },
   },
   webpack: (config) => {
@@ -23,6 +25,7 @@ const nextConfig: NextConfig = {
     config.resolve.alias = {
       ...config.resolve.alias,
       "@mediapipe/face_mesh": path.join(process.cwd(), "lib/mediapipe-face-mesh-shim.ts"),
+      "@mediapipe/face_detection": path.join(process.cwd(), "lib/mediapipe-face-detection-shim.ts"),
     };
     return config;
   },

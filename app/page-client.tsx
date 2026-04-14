@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { useAudio } from "@/lib/useAudio";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
-import { useIrisGaze } from "@/hooks/useIrisGaze";
+import { useIrisGaze, type CameraDevice } from "@/hooks/useIrisGaze";
 import { usePointerGaze } from "@/hooks/usePointerGaze";
 import { useVoiceConversation } from "@/hooks/useVoiceConversation";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -61,6 +61,8 @@ export default function GrandmaGazePage() {
   /** true: MediaPipe 虹彩 / false: Eyedid（seeso）ロールバック用 */
   const [gazeMode, setGazeMode] = useState(true);
   const [irisRestartKey, setIrisRestartKey] = useState(0);
+  const [irisCameraDeviceId, setIrisCameraDeviceId] = useState<string | undefined>(undefined);
+  const irisDebugCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // キャリブ／カメラゲートは localStorage 依存のため、SSR と同じ初期値にしてハイドレーションずれを防ぐ
   const [gazeHydrated, setGazeHydrated] = useState(false);
@@ -299,9 +301,13 @@ export default function GrandmaGazePage() {
     resultCount: irisResultCount,
     kpLen: irisKpLen,
     videoSize: irisVideoSize,
+    initStatus: irisInitStatus,
+    cameras: irisCameras,
   } = useIrisGaze({
     enabled: irisEnabled,
     restartKey: irisRestartKey,
+    debugCanvasRef: irisDebugCanvasRef,
+    cameraDeviceId: irisCameraDeviceId,
     onLeftSelect: () => {
       if (hasSubmittedRef.current) return;
       hasSubmittedRef.current = true;
@@ -612,12 +618,20 @@ export default function GrandmaGazePage() {
               zone={irisZone}
               gazeX={irisGazeX}
               error={irisError}
+              initStatus={irisInitStatus}
               leftProgress={irisLeftProgress}
               rightProgress={irisRightProgress}
               frameCount={irisFrameCount}
               resultCount={irisResultCount}
               kpLen={irisKpLen}
               videoSize={irisVideoSize}
+              debugCanvasRef={irisDebugCanvasRef}
+              cameras={irisCameras}
+              selectedCameraId={irisCameraDeviceId}
+              onSelectCamera={(id) => {
+                setIrisCameraDeviceId(id);
+                setIrisRestartKey((k) => k + 1);
+              }}
             />
           )}
 
@@ -636,28 +650,69 @@ export default function GrandmaGazePage() {
 
 // ── 虹彩モード診断パネル ────────────────────────────────────────────────────
 function IrisDebugPanel({
-  isReady, faceDetected, zone, gazeX, error,
+  isReady, faceDetected, zone, gazeX, error, initStatus,
   leftProgress, rightProgress, frameCount, resultCount, kpLen, videoSize,
+  debugCanvasRef, cameras, selectedCameraId, onSelectCamera,
 }: {
   isReady: boolean; faceDetected: boolean; zone: string;
-  gazeX: number; error: string | null; leftProgress: number; rightProgress: number;
+  gazeX: number; error: string | null; initStatus: string;
+  leftProgress: number; rightProgress: number;
   frameCount: number; resultCount: number; kpLen: number;
   videoSize: { w: number; h: number; paused: boolean; brightness: number };
+  debugCanvasRef: React.RefObject<HTMLCanvasElement | null>;
+  cameras: CameraDevice[];
+  selectedCameraId: string | undefined;
+  onSelectCamera: (id: string) => void;
 }) {
   return (
-    <div className="fixed bottom-4 right-4 z-[99999] w-72 rounded-xl border border-cyan-700 bg-slate-900/95 p-3 font-mono text-xs text-cyan-200 shadow-2xl backdrop-blur">
-      <p className="mb-1 text-sm font-bold text-cyan-300">🔬 虹彩デバッグ</p>
+    <div className="fixed bottom-4 right-4 z-[99999] w-80 rounded-xl border border-cyan-700 bg-slate-900/95 p-3 font-mono text-xs text-cyan-200 shadow-2xl backdrop-blur">
+      <p className="mb-1 text-sm font-bold text-cyan-300">🔬 顔検出デバッグ</p>
+
+      {/* カメラ映像＋検出結果キャンバス */}
+      <div className="mb-2 overflow-hidden rounded-lg border border-slate-600 bg-black" style={{ aspectRatio: "4/3" }}>
+        <canvas
+          ref={debugCanvasRef}
+          className="h-full w-full object-contain"
+          style={{ imageRendering: "pixelated" }}
+        />
+      </div>
+
+      {/* カメラ切替 */}
+      {cameras.length > 0 && (
+        <div className="mb-2">
+          <p className="mb-1 text-slate-400">使用カメラ ({cameras.length}台検出):</p>
+          {cameras.map((cam) => (
+            <button
+              key={cam.deviceId}
+              type="button"
+              onClick={() => onSelectCamera(cam.deviceId)}
+              className={`mb-1 block w-full truncate rounded px-2 py-1 text-left text-xs ${
+                (selectedCameraId ?? "") === cam.deviceId || (!selectedCameraId && cameras[0]?.deviceId === cam.deviceId)
+                  ? "bg-cyan-700 text-white"
+                  : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+              }`}
+            >
+              {cam.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {!isReady && initStatus && (
+        <p className="mb-1 text-yellow-300 animate-pulse">{initStatus}</p>
+      )}
+
       <p>isReady: <span className={isReady ? "text-green-400" : "text-red-400"}>{String(isReady)}</span></p>
       <p>
         video: <span className={videoSize.w > 0 ? "text-green-400" : "text-red-400"}>{videoSize.w}×{videoSize.h}</span>
         {" "}<span className={videoSize.paused ? "text-red-400" : "text-green-400"}>{videoSize.paused ? "停止中" : "再生中"}</span>
         {" "}明度:<span className={videoSize.brightness > 5 ? "text-green-400" : "text-red-400"}>{videoSize.brightness}</span>
       </p>
-      <p>frames送信: <span className="text-white">{frameCount}</span> / onResults: <span className={resultCount > 0 ? "text-green-400" : "text-red-400"}>{resultCount}</span></p>
-      <p>ランドマーク数(kpLen): <span className={kpLen > 0 ? "text-green-400" : "text-red-400"}>{kpLen}</span></p>
+      <p>frames: <span className="text-white">{frameCount}</span> / results: <span className={resultCount > 0 ? "text-green-400" : "text-red-400"}>{resultCount}</span></p>
+      <p>kpLen: <span className={kpLen > 0 ? "text-green-400" : "text-red-400"}>{kpLen}</span>
+        {" "}<span className="text-slate-400">(検出時6、未検出-1)</span></p>
       <p>faceDetected: <span className={faceDetected ? "text-green-400" : "text-yellow-400"}>{String(faceDetected)}</span></p>
-      <p>zone: <span className="text-white">{zone}</span></p>
-      <p>gazeX: <span className="text-white">{gazeX.toFixed(3)}</span></p>
+      <p>zone: <span className="text-white">{zone}</span> gazeX: <span className="text-white">{gazeX.toFixed(3)}</span></p>
       <p>L: <span className="text-orange-300">{(leftProgress * 100).toFixed(0)}%</span> / R: <span className="text-blue-300">{(rightProgress * 100).toFixed(0)}%</span></p>
       {error && <p className="mt-1 break-all text-red-400">⚠️ {error}</p>}
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { GAZE_THROTTLE_MS } from "@/lib/constants";
 
@@ -23,70 +24,31 @@ export interface UseIrisGazeOptions {
   onActivity?: () => void;
   enabled?: boolean;
   restartKey?: number;
+  /** 提供するとフレーム＋検出結果をこの canvas に描画する（開発用デバッグ） */
+  debugCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
+  /** 使用するカメラの deviceId（未指定 = ブラウザのデフォルト） */
+  cameraDeviceId?: string;
 }
 
-// MediaPipe FaceMesh ランドマーク インデックス（正規化座標 0〜1）
-const LM = {
-  NOSE_TIP: 1,
-  LEFT_IRIS: 468,
-  RIGHT_IRIS: 473,
-  FACE_LEFT: 234,
-  FACE_RIGHT: 454,
-} as const;
+export interface CameraDevice {
+  deviceId: string;
+  label: string;
+}
 
-interface FaceMeshResult {
-  multiFaceLandmarks?: Array<Array<{ x: number; y: number; z: number }>>;
-}
-interface FaceMeshInstance {
-  setOptions(opts: Record<string, unknown>): void;
-  onResults(callback: (results: FaceMeshResult) => void): void;
-  send(input: { image: HTMLVideoElement | HTMLCanvasElement }): Promise<void>;
-  close(): void;
-}
-interface FaceMeshCtor {
-  new (config: { locateFile: (f: string) => string }): FaceMeshInstance;
-}
+type FaceKp = { x: number; y: number; name?: string };
+type FaceBox = { xMin: number; yMin: number; width: number; height: number };
+type DetectedFace = { box: FaceBox; keypoints: FaceKp[] };
 
 /**
- * public/@mediapipe/face_mesh/face_mesh.js をロードし window.FaceMesh を確立する。
- * 二重ロードを防ぐために data 属性でガードする。
+ * face-detection の結果からgaze X を算出。
+ * flipHorizontal:true で取得 → 右を見ると noseTip.x が大きくなる（ユーザー視点）。
  */
-function loadFaceMeshScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[data-mp-fm]`)) { resolve(); return; }
-    const s = document.createElement("script");
-    s.setAttribute("data-mp-fm", "1");
-    s.src = "/@mediapipe/face_mesh/face_mesh.js";
-    s.onload = () => resolve();
-    s.onerror = () =>
-      reject(new Error("face_mesh.js の読み込みに失敗しました。public/@mediapipe/face_mesh/ を確認してください。"));
-    document.head.appendChild(s);
-  });
-}
-
-function getFaceMeshCtor(): FaceMeshCtor | null {
-  return (window as unknown as { FaceMesh?: FaceMeshCtor }).FaceMesh ?? null;
-}
-
-/**
- * MediaPipe 正規化座標（0〜1）で視線方向を推定。
- * selfieMode:true のため x は鏡像（右を見る → x が大きい）。
- * 478点あれば虹彩ベース、468点では頭部向きベース。
- */
-function calcGazeX(kp: Array<{ x: number; y: number }>): number | null {
-  if (kp.length < 468) return null;
-  const faceW = Math.abs(kp[LM.FACE_RIGHT].x - kp[LM.FACE_LEFT].x);
-  if (faceW < 0.02) return null;
-
-  if (kp.length >= 478) {
-    // 虹彩ベース（高精度）
-    const avgIrisX = (kp[LM.LEFT_IRIS].x + kp[LM.RIGHT_IRIS].x) / 2;
-    const offset = (avgIrisX - kp[LM.NOSE_TIP].x) / (faceW * 0.25);
-    return Math.max(-1, Math.min(1, offset));
-  }
-  // 頭部向きベース（フォールバック）
-  const faceCenterX = (kp[LM.FACE_LEFT].x + kp[LM.FACE_RIGHT].x) / 2;
-  const offset = (kp[LM.NOSE_TIP].x - faceCenterX) / (faceW * 0.35);
+function calcGazeX(face: DetectedFace): number | null {
+  const noseTip = face.keypoints.find((k) => k.name === "noseTip") ?? face.keypoints[2];
+  if (!noseTip) return null;
+  const faceCenter = face.box.xMin + face.box.width / 2;
+  if (face.box.width < 20) return null; // 顔が小さすぎる（遠すぎ）
+  const offset = (noseTip.x - faceCenter) / (face.box.width * 0.35);
   return Math.max(-1, Math.min(1, offset));
 }
 
@@ -95,6 +57,39 @@ function zoneFromGaze(gazeX: number | null, threshold: number): GazeZone {
   if (gazeX < -threshold) return "left";
   if (gazeX > threshold) return "right";
   return "center";
+}
+
+/** デバッグキャンバスに映像＋検出結果を描画（左右反転でセルフィー表示） */
+function drawDebug(
+  dbgCtx: CanvasRenderingContext2D,
+  src: HTMLCanvasElement,
+  face: DetectedFace | null,
+  videoWidth: number,
+) {
+  // セルフィー表示（左右反転）
+  dbgCtx.save();
+  dbgCtx.translate(videoWidth, 0);
+  dbgCtx.scale(-1, 1);
+  dbgCtx.drawImage(src, 0, 0);
+  dbgCtx.restore();
+
+  if (!face) return;
+
+  // flipHorizontal:true で返った座標は「反転後の空間」に一致している
+  // → ミラー描画後の canvas に直接プロットすれば OK（mx() 変換不要）
+
+  // バウンディングボックス
+  dbgCtx.strokeStyle = "#00ff00";
+  dbgCtx.lineWidth = 2;
+  dbgCtx.strokeRect(face.box.xMin, face.box.yMin, face.box.width, face.box.height);
+
+  // キーポイント
+  for (const kp of face.keypoints) {
+    dbgCtx.fillStyle = kp.name === "noseTip" ? "#ff3333" : "#ffff00";
+    dbgCtx.beginPath();
+    dbgCtx.arc(kp.x, kp.y, kp.name === "noseTip" ? 6 : 3, 0, Math.PI * 2);
+    dbgCtx.fill();
+  }
 }
 
 const FACE_LOST_RESET_MS = 300;
@@ -108,6 +103,8 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
     onActivity,
     enabled = true,
     restartKey = 0,
+    debugCanvasRef,
+    cameraDeviceId,
   } = options;
 
   const dwellMsRef = useRef(dwellMs);
@@ -132,16 +129,19 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
   const lastActivityAtRef = useRef(0);
   const lastTsRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null); // video→canvas変換用
-  const faceMeshRef = useRef<FaceMeshInstance | null>(null);
+  const modelCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const detectorRef = useRef<any>(null);
   const rafRef = useRef<number | null>(null);
   const cancelledRef = useRef(false);
-  // send() が pending かどうか（多重呼び出し防止）
   const sendingRef = useRef(false);
+
   const [frameCount, setFrameCount] = useState(0);
   const [resultCount, setResultCount] = useState(0);
-  const [kpLen, setKpLen] = useState(-1); // MediaPipe が返すランドマーク数（-1=顔なし）
-  const [videoSize, setVideoSize] = useState({ w: 0, h: 0, paused: true, brightness: -1 }); // 診断用
+  const [kpLen, setKpLen] = useState(-1);
+  const [videoSize, setVideoSize] = useState({ w: 0, h: 0, paused: true, brightness: -1 });
+  const [initStatus, setInitStatus] = useState("");
+  const [cameras, setCameras] = useState<CameraDevice[]>([]);
 
   const onLeftRef = useRef(onLeftSelect);
   const onRightRef = useRef(onRightSelect);
@@ -162,11 +162,11 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    try { faceMeshRef.current?.close(); } catch { /* ignore */ }
-    faceMeshRef.current = null;
+    try { detectorRef.current?.dispose(); } catch { /* ignore */ }
+    detectorRef.current = null;
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
     streamRef.current = null;
-    canvasRef.current = null;
+    modelCanvasRef.current = null;
     sendingRef.current = false;
     lastTsRef.current = null;
     faceLostAtRef.current = null;
@@ -178,6 +178,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
     if (!enabled) {
       cancelledRef.current = true;
       stopAll();
+      setInitStatus("");
       setState((s) => ({
         ...s, zone: "none", leftProgress: 0, rightProgress: 0,
         gazeX: 0, faceDetected: false, isReady: false,
@@ -192,117 +193,60 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       setState((s) => ({ ...s, error: null, isReady: false }));
 
       try {
-        // 1. face_mesh.js をロード → window.FaceMesh を確立
-        await loadFaceMeshScript();
+        // ── Step 1: TF.js WebGL バックエンド初期化 ──
+        setInitStatus("TF.js WebGL 初期化中…");
+        const tf = await import("@tensorflow/tfjs-core");
+        await import("@tensorflow/tfjs-backend-webgl");
+        try {
+          await tf.setBackend("webgl");
+        } catch {
+          // WebGL が使えない場合は CPU にフォールバック
+          await tf.setBackend("cpu");
+        }
+        await tf.ready();
         if (localCancel || cancelledRef.current) return;
 
-        const FaceMeshCtor = getFaceMeshCtor();
-        if (!FaceMeshCtor) {
-          throw new Error("window.FaceMesh が見つかりません。ページを再読み込みしてください。");
+        // ── Step 2: 顔検出モデルをロード ──
+        setInitStatus("顔検出モデル読み込み中… (初回のみ時間がかかります)");
+        const faceDetection = await import("@tensorflow-models/face-detection");
+        const detector = await faceDetection.createDetector(
+          faceDetection.SupportedModels.MediaPipeFaceDetector,
+          {
+            runtime: "tfjs" as const,
+            modelType: "short" as const, // 2m以内・高速
+            maxFaces: 1,
+          },
+        );
+        if (localCancel || cancelledRef.current) {
+          detector.dispose();
+          return;
         }
+        detectorRef.current = detector;
+        setInitStatus("モデル準備完了。カメラ起動中…");
 
-        // 2. FaceMesh インスタンスを作成
-        const fm = new FaceMeshCtor({
-          locateFile: (file: string) => `/@mediapipe/face_mesh/${file}`,
-        });
+        // ── Step 3: カメラ一覧を取得してから開く ──
+        // 一度 permissions を取得しないとラベルが空になるため、先に getUserMedia する
+        const videoConstraints: MediaTrackConstraints = cameraDeviceId
+          ? { deviceId: { exact: cameraDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+          : { width: { ideal: 640 }, height: { ideal: 480 } };
+        const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
 
-        fm.setOptions({
-          maxNumFaces: 1,
-          refineLandmarks: false,     // false = 468点モデル（軽量・高速）
-          selfieMode: true,           // カメラ映像は通常ミラー済み → true が自然
-          minDetectionConfidence: 0.2,
-          minTrackingConfidence: 0.2,
-        });
-
-        faceMeshRef.current = fm;
-
-        // 3. onResults コールバックを先に登録
-        fm.onResults((results: FaceMeshResult) => {
-          if (localCancel || cancelledRef.current) return;
-          setResultCount((n) => n + 1);
-
-          const now = performance.now();
-          const last = lastTsRef.current ?? now;
-          const dt = Math.min(Math.max(now - last, 0), 100);
-          lastTsRef.current = now;
-
-          const kp = results.multiFaceLandmarks?.[0];
-          const kpCount = kp ? kp.length : -1;
-          setKpLen(kpCount);
-          const gx = kp ? calcGazeX(kp) : null;
-          // faceDetected = MediaPipe が顔を認識したかどうか（gaze計算の成否とは独立）
-          const faceMeshDetected = kpCount > 0;
-          const valid = gx !== null;
-
-          let zone: GazeZone = "none";
-          let gazeXVal = 0;
-          let faceDetected = false;
-
-          if (!faceMeshDetected) {
-            if (faceLostAtRef.current === null) faceLostAtRef.current = now;
-            const lostMs = now - faceLostAtRef.current;
-            if (lostMs < FACE_LOST_RESET_MS) zone = "center";
-            else { dLeftRef.current = 0; dRightRef.current = 0; }
-          } else {
-            faceLostAtRef.current = null;
-            faceDetected = true;
-            if (valid) {
-              gazeXVal = gx!;
-              zone = zoneFromGaze(gx, thresholdRef.current);
-              bumpActivity();
-            } else {
-              zone = "center";
-            }
-          }
-
-          const d = dwellMsRef.current;
-          if (zone === "left") {
-            dLeftRef.current = Math.min(d, dLeftRef.current + dt);
-            dRightRef.current = Math.max(0, dRightRef.current - dt * 2);
-          } else if (zone === "right") {
-            dRightRef.current = Math.min(d, dRightRef.current + dt);
-            dLeftRef.current = Math.max(0, dLeftRef.current - dt * 2);
-          } else if (zone === "center") {
-            dLeftRef.current = Math.max(0, dLeftRef.current - dt * 0.6);
-            dRightRef.current = Math.max(0, dRightRef.current - dt * 0.6);
-          }
-
-          dLeftRef.current = Math.min(d, Math.max(0, dLeftRef.current));
-          dRightRef.current = Math.min(d, Math.max(0, dRightRef.current));
-
-          if (dLeftRef.current >= d) {
-            onLeftRef.current?.();
-            dLeftRef.current = 0;
-            dRightRef.current = 0;
-          } else if (dRightRef.current >= d) {
-            onRightRef.current?.();
-            dLeftRef.current = 0;
-            dRightRef.current = 0;
-          }
-
-          setState({
-            zone,
-            leftProgress: d > 0 ? dLeftRef.current / d : 0,
-            rightProgress: d > 0 ? dRightRef.current / d : 0,
-            gazeX: gazeXVal,
-            faceDetected,
-            isReady: true,
-            error: null,
-          });
-        });
-
-        // 4. カメラを開く
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } },
-        });
+        // 接続済みカメラ一覧を取得（パーミッション取得後でないとラベルが空）
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const videoDevices = devices
+            .filter((d) => d.kind === "videoinput")
+            .map((d) => ({ deviceId: d.deviceId, label: d.label || `カメラ ${d.deviceId.slice(0, 8)}` }));
+          setCameras(videoDevices);
+        } catch { /* ignore */ }
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
-          fm.close();
+          detector.dispose();
           return;
         }
         streamRef.current = stream;
 
-        // 5. videoRef が DOM に現れるまで待つ（最大 5 秒）
+        // ── Step 4: videoRef が DOM に現れるまで待つ ──
         const video = await (async () => {
           const t0 = performance.now();
           while (performance.now() - t0 < 5000) {
@@ -315,7 +259,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         if (!video) {
           stream.getTracks().forEach((t) => t.stop());
-          fm.close();
+          detector.dispose();
           if (!localCancel && !cancelledRef.current) {
             setState((s) => ({
               ...s,
@@ -329,70 +273,166 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         video.srcObject = stream;
         video.muted = true;
         video.playsInline = true;
-        await video.play().catch(() => {/* autoplay 制限は無視 */});
-
+        await video.play().catch(() => {});
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
-          fm.close();
+          detector.dispose();
           return;
         }
 
+        setInitStatus("");
         setState((s) => ({ ...s, isReady: true, error: null }));
 
-        // 6. RAFループ：send() の完了を待たずに毎フレームスケジュールし、
-        //    send() が pending の間はスキップ（多重送信・ループ死を両方防ぐ）
-        // canvas を一度だけ作成（crossOriginIsolated環境でのWebGL制限を回避）
-        if (!canvasRef.current) {
-          canvasRef.current = document.createElement("canvas");
+        if (!modelCanvasRef.current) {
+          modelCanvasRef.current = document.createElement("canvas");
         }
 
         let diagCounter = 0;
+
         const runLoop = () => {
           if (localCancel || cancelledRef.current) return;
-          rafRef.current = requestAnimationFrame(runLoop); // 次フレームを先に予約
+          rafRef.current = requestAnimationFrame(runLoop);
 
           const vid = videoRef.current;
-          const mesh = faceMeshRef.current;
-          if (!vid || !mesh || vid.readyState < 2) return;
-          if (sendingRef.current) return; // 前フレーム処理中 → スキップ
+          const det = detectorRef.current;
+          if (!vid || !det || vid.readyState < 2) return;
+          if (sendingRef.current) return;
           if (vid.videoWidth === 0) return;
 
-          // 診断情報を 30 フレームごとに更新
+          // ── モデル用キャンバスにビデオを描画 ──
+          const cvs = modelCanvasRef.current!;
+          if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+            cvs.width = vid.videoWidth;
+            cvs.height = vid.videoHeight;
+          }
+          const ctx = cvs.getContext("2d");
+          if (!ctx) return;
+          try { ctx.drawImage(vid, 0, 0); } catch { return; }
+
+          // ── 診断情報を 30 フレームごとに更新 ──
           if (diagCounter++ % 30 === 0) {
-            // canvasに一時描画して明度チェック
             let brightness = -1;
             try {
-              const cvs = canvasRef.current!;
-              if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
-                cvs.width = vid.videoWidth;
-                cvs.height = vid.videoHeight;
-              }
-              const ctx2 = cvs.getContext("2d");
-              if (ctx2) {
-                ctx2.drawImage(vid, 0, 0);
-                const px = ctx2.getImageData(Math.floor(cvs.width / 2) - 2, Math.floor(cvs.height / 2) - 2, 4, 4);
-                brightness = Math.round(
-                  Array.from(px.data).reduce((s, v, i) => (i % 4 === 3 ? s : s + v), 0) / (4 * 4 * 3)
-                );
-              }
+              const sx = Math.floor(cvs.width / 2) - 16;
+              const sy = Math.floor(cvs.height / 2) - 16;
+              const px = ctx.getImageData(sx, sy, 32, 32);
+              brightness = Math.round(
+                Array.from(px.data).reduce((s, v, i) => (i % 4 === 3 ? s : s + v), 0) / (32 * 32 * 3),
+              );
             } catch { /* ignore */ }
             setVideoSize({ w: vid.videoWidth, h: vid.videoHeight, paused: vid.paused, brightness });
             if (vid.paused) { vid.play().catch(() => {}); }
           }
 
-          // COOP/COEP除去済みなのでビデオ要素を直接送信
+          const videoWidth = vid.videoWidth;
           sendingRef.current = true;
           setFrameCount((n) => n + 1);
-          mesh.send({ image: vid })
-            .catch(() => {/* 個別フレームのエラーは無視 */})
+
+          // ── 顔検出（flipHorizontal:true = 右を見ると gazeX > 0） ──
+          (det.estimateFaces(cvs, { flipHorizontal: true }) as Promise<DetectedFace[]>)
+            .then((faces) => {
+              if (localCancel || cancelledRef.current) return;
+              setResultCount((n) => n + 1);
+
+              const now = performance.now();
+              const last = lastTsRef.current ?? now;
+              const dt = Math.min(Math.max(now - last, 0), 100);
+              lastTsRef.current = now;
+
+              const face = faces[0] ?? null;
+              const kpCount = face ? face.keypoints.length : -1;
+              setKpLen(kpCount);
+
+              // ── デバッグキャンバスに描画 ──
+              const dbgCvs = debugCanvasRef?.current;
+              if (dbgCvs) {
+                if (dbgCvs.width !== videoWidth || dbgCvs.height !== vid.videoHeight) {
+                  dbgCvs.width = videoWidth;
+                  dbgCvs.height = vid.videoHeight;
+                }
+                const dbgCtx = dbgCvs.getContext("2d");
+                if (dbgCtx) {
+                  drawDebug(dbgCtx, cvs, face, videoWidth);
+                }
+              }
+
+              const gx = face ? calcGazeX(face) : null;
+              const faceMeshDetected = kpCount > 0;
+              const valid = gx !== null;
+
+              let zone: GazeZone = "none";
+              let gazeXVal = 0;
+              let faceDetected = false;
+
+              if (!faceMeshDetected) {
+                if (faceLostAtRef.current === null) faceLostAtRef.current = now;
+                const lostMs = now - faceLostAtRef.current;
+                if (lostMs < FACE_LOST_RESET_MS) zone = "center";
+                else { dLeftRef.current = 0; dRightRef.current = 0; }
+              } else {
+                faceLostAtRef.current = null;
+                faceDetected = true;
+                if (valid) {
+                  gazeXVal = gx!;
+                  zone = zoneFromGaze(gx, thresholdRef.current);
+                  bumpActivity();
+                } else {
+                  zone = "center";
+                }
+              }
+
+              const d = dwellMsRef.current;
+              if (zone === "left") {
+                dLeftRef.current = Math.min(d, dLeftRef.current + dt);
+                dRightRef.current = Math.max(0, dRightRef.current - dt * 2);
+              } else if (zone === "right") {
+                dRightRef.current = Math.min(d, dRightRef.current + dt);
+                dLeftRef.current = Math.max(0, dLeftRef.current - dt * 2);
+              } else if (zone === "center") {
+                dLeftRef.current = Math.max(0, dLeftRef.current - dt * 0.6);
+                dRightRef.current = Math.max(0, dRightRef.current - dt * 0.6);
+              }
+
+              dLeftRef.current = Math.min(d, Math.max(0, dLeftRef.current));
+              dRightRef.current = Math.min(d, Math.max(0, dRightRef.current));
+
+              if (dLeftRef.current >= d) {
+                onLeftRef.current?.();
+                dLeftRef.current = 0;
+                dRightRef.current = 0;
+              } else if (dRightRef.current >= d) {
+                onRightRef.current?.();
+                dLeftRef.current = 0;
+                dRightRef.current = 0;
+              }
+
+              setState({
+                zone,
+                leftProgress: d > 0 ? dLeftRef.current / d : 0,
+                rightProgress: d > 0 ? dRightRef.current / d : 0,
+                gazeX: gazeXVal,
+                faceDetected,
+                isReady: true,
+                error: null,
+              });
+            })
+            .catch((e: unknown) => {
+              // エラーを飲み込まずに state に反映（何が起きているか可視化）
+              const msg = e instanceof Error ? e.message : String(e);
+              console.error("[useIrisGaze] estimateFaces error:", msg);
+              setState((s) => ({ ...s, error: `検出エラー: ${msg.slice(0, 120)}` }));
+            })
             .finally(() => { sendingRef.current = false; });
         };
+
         runLoop();
 
       } catch (e: unknown) {
         const msg = e instanceof Error ? e.message : "初期化に失敗しました";
+        console.error("[useIrisGaze] boot error:", msg);
         if (!localCancel && !cancelledRef.current) {
           setState((s) => ({ ...s, error: msg, isReady: false, faceDetected: false }));
+          setInitStatus("");
         }
       }
     }
@@ -403,8 +443,9 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       localCancel = true;
       cancelledRef.current = true;
       stopAll();
+      setInitStatus("");
     };
-  }, [enabled, restartKey, stopAll, bumpActivity]);
+  }, [enabled, restartKey, stopAll, bumpActivity, debugCanvasRef]);
 
-  return { videoRef, frameCount, resultCount, kpLen, videoSize, ...state };
+  return { videoRef, frameCount, resultCount, kpLen, videoSize, initStatus, cameras, ...state };
 }

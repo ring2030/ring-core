@@ -15,7 +15,11 @@
       "Bash(grep -o \"..\\\\{20\\\\}createMediapipeSolutionsPackedAssets.\\\\{20\\\\}..\" \"C:/Users/user/Desktop/ring-core/public/@mediapipe/face_mesh/face_mesh.js\")",
       "Bash(grep -oP \"function Ub.{0,200}\" \"C:/Users/user/Desktop/ring-core/public/@mediapipe/face_mesh/face_mesh.js\")",
       "Bash(taskkill /PID 21676 /F)",
-      "Bash(taskkill //PID 21676 //F)"
+      "Bash(taskkill //PID 21676 //F)",
+      "Bash(git show:*)",
+      "Bash(node:*)",
+      "Bash(cat C:/Users/user/Desktop/ring-core/next.config.*)",
+      "Bash(npx next:*)"
     ]
   }
 }
