@@ -104,7 +104,7 @@ export function localTriage(message: string): TriageResponse {
 
   if (emergency5.test(text)) {
     return {
-      response: "大丈夫ですか？今すぐみっちゃんが行きます！",
+      response: "大丈夫ですか？今すぐ看護師さんが向かいます！",
       summary: "【至急】痛みや体調異常の訴え",
       priority: 5,
     };
@@ -135,7 +135,7 @@ export function localTriage(message: string): TriageResponse {
     const responses = [
       "はい、分かりました。今すぐ用意しますね。",
       "そうですね、すぐ持っていきますよ。",
-      "了解しました。みっちゃんに伝えますね。",
+      "了解しました。看護師さんに伝えますね。",
     ];
     return {
       response: responses[Math.floor(Math.random() * responses.length)],
@@ -147,7 +147,7 @@ export function localTriage(message: string): TriageResponse {
   // ── 通常の会話 ───────────────────────────────────────────────
   const casualResponses = [
     "そうなんですね。もう少し聞かせてください。",
-    "うんうん、なるほどですね。みっちゃんにも伝えておきますね。",
+    "うんうん、なるほどですね。看護師さんにも伝えておきますね。",
     "きよ子さんのお話、いつも楽しいですよ。もっと聞かせてください。",
     "そうですか。他に何か気になることはありますか？",
   ];

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { buildCallWritePayload } from "@/lib/calls/schema";
 import { useAudio } from "@/lib/useAudio";
 import { useEyedidGaze } from "@/hooks/useEyedidGaze";
 import { useIrisGaze } from "@/hooks/useIrisGaze";
@@ -275,12 +276,16 @@ export default function GrandmaGazePage() {
       currentCallIdRef.current = null;
 
       try {
-        const docRef = await addDoc(collection(getFirestoreDb(), "calls"), {
-          理由: [reason],
-          特記事項: reason === "トイレ" ? "視線入力からの自動送信" : "AI会話開始",
-          送信者: "きよ子",
-          送信日時: serverTimestamp(),
-        });
+        const docRef = await addDoc(
+          collection(getFirestoreDb(), "calls"),
+          buildCallWritePayload({
+            reasons: [reason],
+            note: reason === "トイレ" ? "視線入力からの自動送信" : "AI会話開始",
+            senderName: "きよ子",
+            senderRole: "patient",
+            priority: reason === "トイレ" ? 4 : 2,
+          }),
+        );
         currentCallIdRef.current = docRef.id;
       } catch {
         /* ignore */
@@ -550,12 +555,12 @@ export default function GrandmaGazePage() {
           {sentReason === "トイレ" ? (
             <div className="rounded-[4rem] border-8 border-orange-600/45 bg-gradient-to-br from-slate-900 to-slate-950 p-16 text-center shadow-2xl sm:p-24">
               <h1 className="mb-8 text-[clamp(2.5rem,10vmin,6rem)] font-black leading-tight text-orange-300">
-                みっちゃんさんに
+                看護師さんを
                 <br />
-                伝えましたよ！
+                呼ぶね
               </h1>
               <p className="text-[clamp(1.25rem,4vmin,3rem)] font-bold text-slate-300">
-                すぐに行くから、待っててね。
+                いま連絡したから、安心して待っててね。
               </p>
             </div>
           ) : (

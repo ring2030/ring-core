@@ -1,18 +1,23 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { buildCallWritePayload } from "@/lib/calls/schema";
 import { GazeHoverSurface } from "@/components/kiyoko/GazeHoverSurface";
 import { VoiceTriageModal } from "@/components/kiyoko/VoiceTriageModal";
 
 async function saveToiletCall() {
-  await addDoc(collection(getFirestoreDb(), "calls"), {
-    理由: "トイレ",
-    緊急度: "中",
-    時間: serverTimestamp(),
-    ステータス: "未対応",
-  });
+  await addDoc(
+    collection(getFirestoreDb(), "calls"),
+    buildCallWritePayload({
+      reasons: ["トイレ"],
+      note: "簡易画面からの送信",
+      senderName: "きよ子",
+      senderRole: "patient",
+      priority: 4,
+    }),
+  );
 }
 
 export default function KiyokoNurseCallPage() {

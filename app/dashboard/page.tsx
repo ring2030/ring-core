@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { buildCallWritePayload } from "@/lib/calls/schema";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
 
 const REASON_OPTIONS = [
@@ -60,12 +61,16 @@ export default function DashboardPage() {
     setSubmitting(true);
 
     try {
-      await addDoc(collection(getFirestoreDb(), "calls"), {
-        理由: reasons,
-        特記事項: notes,
-        送信者: DEFAULT_SENDER_NAME,
-        送信日時: serverTimestamp(),
-      });
+      await addDoc(
+        collection(getFirestoreDb(), "calls"),
+        buildCallWritePayload({
+          reasons: [...reasons],
+          note: notes,
+          senderName: DEFAULT_SENDER_NAME,
+          senderRole: "nurse",
+          priority: 2,
+        }),
+      );
     } catch (err) {
       console.error(err);
       setErrorMessage(

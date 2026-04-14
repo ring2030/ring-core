@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   collection,
   onSnapshot,
-  orderBy,
   query,
-  Timestamp,
-  where,
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { normalizeCallDoc } from "@/lib/calls/schema";
 import {
   AlertCircle,
   ChevronLeft,
@@ -25,6 +23,12 @@ import {
 } from "lucide-react";
 import { buildHighlight, dateLabel } from "@/lib/dashboard/historyUtils";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
+import {
+  DashboardHeader,
+  DashboardNavStrip,
+  DashboardPageFrame,
+} from "@/components/dashboard/DashboardChrome";
+import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -48,8 +52,8 @@ const REASON_EMOJI: Record<string, string> = {
 /** 優先度ごとのカードデザイン（家族向けに優しい表現） */
 const CARD_STYLE = {
   ai:    { bg: "bg-gradient-to-br from-sky-50 to-indigo-50",   border: "border-sky-200",    dot: "bg-sky-400",    label: "AIがお話を聞きました",       icon: <Bot className="h-4 w-4 text-sky-400" /> },
-  nurse: { bg: "bg-gradient-to-br from-amber-50 to-orange-50", border: "border-amber-200",  dot: "bg-amber-400",  label: "みっちゃんが対応しました",   icon: <Stethoscope className="h-4 w-4 text-amber-500" /> },
-  urgent:{ bg: "bg-gradient-to-br from-rose-50 to-pink-50",    border: "border-rose-300",   dot: "bg-rose-500",   label: "みっちゃんがすぐに駆けつけました", icon: <Stethoscope className="h-4 w-4 text-rose-500" /> },
+  nurse: { bg: "bg-gradient-to-br from-amber-50 to-orange-50", border: "border-amber-200",  dot: "bg-amber-400",  label: "看護師さんが対応しました",   icon: <Stethoscope className="h-4 w-4 text-amber-500" /> },
+  urgent:{ bg: "bg-gradient-to-br from-rose-50 to-pink-50",    border: "border-rose-300",   dot: "bg-rose-500",   label: "看護師さんがすぐに駆けつけました", icon: <Stethoscope className="h-4 w-4 text-rose-500" /> },
 };
 
 function cardStyle(priority: number) {
@@ -112,10 +116,10 @@ function TimelineCard({ call, index }: { call: CallDoc; index: number }) {
                 {call.ts.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 rounded-full border border-white/60 bg-white/70 px-2.5 py-1 text-[10px] font-bold shadow-sm backdrop-blur-sm">
+            <StatusBadge tone="neutral" className="gap-1.5 border-white/60 bg-white/70 shadow-sm backdrop-blur-sm">
               {style.icon}
               <span className="text-stone-600">{style.label}</span>
-            </div>
+            </StatusBadge>
           </div>
 
           {/* 用件 */}
@@ -153,6 +157,10 @@ export default function FamilyHistoryPage() {
       };
     }
   }, []);
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }, []);
 
   // Firestore 購読
   useEffect(() => {
@@ -160,25 +168,25 @@ export default function FamilyHistoryPage() {
       return;
     }
 
-    const q = query(
-      collection(dbResult.db, "calls"),
-      where("送信日時", ">=", Timestamp.fromDate(startOf(selectedDate))),
-      where("送信日時", "<=", Timestamp.fromDate(endOf(selectedDate))),
-      orderBy("送信日時", "asc"),
-    );
+    const q = query(collection(dbResult.db, "calls"));
 
     const unsub = onSnapshot(q, (snap) => {
-      const docs: CallDoc[] = snap.docs.map((d) => {
-        const data = d.data();
-        const reasons: string[] = Array.isArray(data.理由) ? data.理由 : [data.理由 ?? "不明"];
-        return {
-          id:       d.id,
-          reason:   reasons.join("・"),
-          summary:  data.要約 ?? "",
-          priority: data.緊急度 ?? 1,
-          ts:       data.送信日時?.toDate() ?? new Date(),
-        };
-      });
+      const start = startOf(selectedDate).getTime();
+      const end = endOf(selectedDate).getTime();
+      const docs: CallDoc[] = snap.docs
+        .map((d) => normalizeCallDoc(d.id, d.data()))
+        .filter((item) => {
+          const t = item.createdAt.getTime();
+          return t >= start && t <= end;
+        })
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+        .map((item) => ({
+          id: item.id,
+          reason: item.reasons.join("・"),
+          summary: item.aiSummary,
+          priority: item.priority,
+          ts: item.createdAt,
+        }));
       setCalls(docs);
       setLoading(false);
     }, (err) => {
@@ -225,12 +233,9 @@ export default function FamilyHistoryPage() {
         <div className="max-w-sm text-center">
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-400" />
           <p className="mb-6 text-sm font-bold text-red-500">{fatalError}</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="rounded-xl bg-rose-500 px-6 py-3 font-bold text-white shadow-md hover:bg-rose-600 transition-colors"
-          >
+          <AppButton onClick={() => window.location.reload()} tone="danger" className="px-6 py-3">
             再読み込み
-          </button>
+          </AppButton>
         </div>
       </div>
     );
@@ -251,48 +256,47 @@ export default function FamilyHistoryPage() {
         }
       `}</style>
 
-      <div className="min-h-screen bg-gradient-to-b from-rose-50 via-amber-50 to-white font-sans">
+      <DashboardPageFrame>
 
         {/* ── ヘッダー ───────────────────────────────────────────────────────── */}
-        <header className="sticky top-0 z-10 border-b border-rose-100 bg-white/90 shadow-sm backdrop-blur-md">
-          <div className="mx-auto max-w-lg px-4 py-4">
-            <h1 className="mb-3 flex items-center gap-2 text-lg font-black text-rose-800">
-              <Heart className="h-5 w-5 animate-pulse text-rose-400" />
-              きよ子さんの一日のようす
-            </h1>
-
-            {/* 日付ナビ */}
-            <div className="flex items-center justify-between rounded-2xl bg-rose-50 px-2 py-1.5">
-              <button
-                onClick={prevDay}
-                className="rounded-xl p-2 transition-all hover:bg-rose-100 hover:scale-110 active:scale-95"
-              >
-                <ChevronLeft className="h-5 w-5 text-rose-500" />
-              </button>
-              <div className="text-center">
-                <span className="text-sm font-bold text-rose-900">{dateLabel(selectedDate)}</span>
-                {isToday(selectedDate) && (
-                  <span className="ml-2 rounded-full bg-rose-400 px-2 py-0.5 text-[10px] font-black text-white shadow-sm">
-                    今日
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={nextDay}
-                disabled={isToday(selectedDate)}
-                className="rounded-xl p-2 transition-all hover:bg-rose-100 hover:scale-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
-              >
-                <ChevronRight className="h-5 w-5 text-rose-500" />
-              </button>
+        <DashboardHeader
+          title="ケア履歴（家族）"
+          leftIcon={<Heart className="h-5 w-5 animate-pulse text-cyan-500" />}
+          rightSlot={<AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-[11px]">ログアウト</AppButton>}
+          contentClassName="max-w-lg px-4 py-4"
+        />
+        <div className="mx-auto max-w-lg px-4 pt-3">
+          {/* 日付ナビ */}
+          <div className="flex items-center justify-between rounded-2xl bg-cyan-50 px-2 py-1.5">
+            <button
+              onClick={prevDay}
+              className="rounded-xl p-2 transition-all hover:bg-cyan-100 hover:scale-110 active:scale-95"
+            >
+              <ChevronLeft className="h-5 w-5 text-cyan-600" />
+            </button>
+            <div className="text-center">
+              <span className="text-sm font-bold text-slate-800">{dateLabel(selectedDate)}</span>
+              {isToday(selectedDate) && (
+                <StatusBadge tone="info" className="ml-2 border-cyan-500 bg-cyan-500 text-white shadow-sm">
+                  今日
+                </StatusBadge>
+              )}
             </div>
+            <button
+              onClick={nextDay}
+              disabled={isToday(selectedDate)}
+              className="rounded-xl p-2 transition-all hover:bg-cyan-100 hover:scale-110 active:scale-95 disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <ChevronRight className="h-5 w-5 text-cyan-600" />
+            </button>
           </div>
-        </header>
+        </div>
 
-        <div className="border-b border-rose-100 bg-rose-50/80 px-4 py-2">
+        <DashboardNavStrip className="mt-3">
           <div className="mx-auto max-w-lg">
             <StaffLinks className="text-xs" />
           </div>
-        </div>
+        </DashboardNavStrip>
 
         <main className="mx-auto max-w-lg px-4 py-6">
 
@@ -319,7 +323,7 @@ export default function FamilyHistoryPage() {
           {!loading && calls.length > 0 && (
             <>
               {/* ── AIハイライトカード ──────────────────────────────────────── */}
-              <div className="mb-6 overflow-hidden rounded-3xl bg-gradient-to-br from-violet-100 via-purple-50 to-indigo-50 border border-violet-200 p-5 shadow-sm opacity-0 animate-[fadeInUp_0.5s_ease-out_forwards]">
+              <AppCard className="mb-6 overflow-hidden border-violet-200 bg-gradient-to-br from-violet-100 via-purple-50 to-indigo-50 p-5 opacity-0 animate-[fadeInUp_0.5s_ease-out_forwards]">
                 <div className="mb-3 flex items-center gap-2">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-200">
                     <Sparkles className="h-4 w-4 text-violet-600" />
@@ -330,7 +334,7 @@ export default function FamilyHistoryPage() {
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed text-violet-900 font-medium">{highlight}</p>
-              </div>
+              </AppCard>
 
               {/* ── サマリーカード（3点） ────────────────────────────────────── */}
               <div className="mb-6 grid grid-cols-3 gap-3 opacity-0 animate-[fadeInUp_0.5s_ease-out_0.1s_forwards]">
@@ -371,18 +375,18 @@ export default function FamilyHistoryPage() {
               </div>
 
               {/* ── 安心メッセージ ────────────────────────────────────────────── */}
-              <div className="mt-4 rounded-3xl border border-rose-100 bg-gradient-to-br from-rose-50 to-pink-50 p-5 text-center shadow-sm opacity-0 animate-[fadeInUp_0.5s_ease-out_forwards]"
+              <AppCard className="mt-4 border-rose-100 bg-gradient-to-br from-rose-50 to-pink-50 p-5 text-center opacity-0 animate-[fadeInUp_0.5s_ease-out_forwards]"
                 style={{ animationDelay: `${calls.length * 60 + 200}ms` }}>
                 <p className="text-2xl mb-2">🌷</p>
                 <p className="text-sm font-bold text-rose-700">
                   きよ子さんは今日も、スタッフとAIにしっかり見守られています。
                 </p>
                 <p className="mt-1 text-xs text-rose-400">24時間・365日、安心のサポート体制</p>
-              </div>
+              </AppCard>
             </>
           )}
         </main>
-      </div>
+      </DashboardPageFrame>
     </>
   );
 }

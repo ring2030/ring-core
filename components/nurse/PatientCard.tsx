@@ -1,6 +1,8 @@
 "use client";
 
 import { AlertTriangle, Clock, MessageCircle } from "lucide-react";
+import { StatusBadge } from "@/components/ui/ThemePrimitives";
+import { getPriorityBadge } from "@/lib/dashboard/priorityBadge";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -29,16 +31,12 @@ export interface PatientCardData {
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 
 const P_CFG = {
-  5: { bar: "bg-red-500",    badge: "bg-red-100 text-red-700 border-red-200"    },
-  4: { bar: "bg-orange-400", badge: "bg-orange-100 text-orange-700 border-orange-200" },
-  3: { bar: "bg-amber-400",  badge: "bg-amber-100 text-amber-700 border-amber-200"  },
-  2: { bar: "bg-sky-300",    badge: "bg-sky-100 text-sky-700 border-sky-200"    },
-  1: { bar: "bg-stone-200",  badge: "bg-stone-100 text-stone-500 border-stone-200" },
+  5: { bar: "bg-red-500" },
+  4: { bar: "bg-orange-400" },
+  3: { bar: "bg-amber-400" },
+  2: { bar: "bg-sky-300" },
+  1: { bar: "bg-stone-200" },
 } as const;
-
-const PRIORITY_LABEL: Record<number, string> = {
-  5: "最優先", 4: "急ぎ対応", 3: "通常対応", 2: "経過観察", 1: "記録のみ",
-};
 
 const REASON_EMOJI: Record<string, string> = {
   "トイレ": "🚽", "お話": "💬", "痛い": "🚨", "寂しい": "🤝",
@@ -56,7 +54,7 @@ function toHHMM(d: Date): string {
 export default function PatientCard({ patient }: { patient: PatientCardData }) {
   const { name, room, age, condition, maxPriority, latest, todayCalls } = patient;
   const isUrgent = maxPriority >= 4;
-  const cfg = P_CFG[maxPriority as keyof typeof P_CFG] ?? P_CFG[1];
+  const badge = getPriorityBadge(maxPriority);
 
   return (
     <div
@@ -109,9 +107,7 @@ export default function PatientCard({ patient }: { patient: PatientCardData }) {
                 {toHHMM(latest.date)}
               </p>
               {maxPriority > 0 && (
-                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-black ${cfg.badge}`}>
-                  {PRIORITY_LABEL[maxPriority] ?? "—"}
-                </span>
+                <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
               )}
             </div>
             <p className="font-bold text-stone-700 text-sm">

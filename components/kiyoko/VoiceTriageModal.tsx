@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { addDoc, collection, serverTimestamp } from "firebase/firestore";
+import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
+import { buildCallWritePayload } from "@/lib/calls/schema";
 import { triageFromTranscript } from "@/lib/kiyoko/triageFromTranscript";
 
 const REASSURANCE =
-  "みっちゃんや看護師さんに伝えたよ。安心して待っててね。";
+  "看護師さんに伝えたよ。安心して待っててね。";
 
 /** 無音のままこの時間でタイムアウト（空または途中までの認識で送信） */
 const ABSOLUTE_LISTEN_MS = 26000;
@@ -16,13 +17,18 @@ async function saveVoiceCall(t: {
   緊急度: string;
   認識文: string;
 }) {
-  await addDoc(collection(getFirestoreDb(), "calls"), {
-    理由: t.理由,
-    緊急度: t.緊急度,
-    時間: serverTimestamp(),
-    ステータス: "未対応",
-    ...(t.認識文 ? { 認識文: t.認識文 } : {}),
-  });
+  const priority = t.緊急度 === "高" ? 4 : t.緊急度 === "中" ? 3 : 2;
+  await addDoc(
+    collection(getFirestoreDb(), "calls"),
+    buildCallWritePayload({
+      reasons: [t.理由],
+      note: "",
+      senderName: "きよ子",
+      senderRole: "patient",
+      priority,
+      transcript: t.認識文,
+    }),
+  );
 }
 
 function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {

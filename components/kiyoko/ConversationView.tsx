@@ -11,6 +11,12 @@ type Props = {
 
 export function ConversationView({ aiText, isListening, isThinking, onEnd }: Props) {
   const phase = isListening ? "listen" : isThinking ? "think" : "speak";
+  const mouthClass =
+    phase === "speak"
+      ? "animate-[kiyoko-avatar-talk_0.7s_ease-in-out_infinite]"
+      : phase === "think"
+        ? "animate-pulse"
+        : "";
 
   return (
     <div className="flex h-full w-full animate-in zoom-in flex-col items-center justify-center duration-500">
@@ -52,9 +58,15 @@ export function ConversationView({ aiText, isListening, isThinking, onEnd }: Pro
             }`}
           />
           <div className="relative flex h-56 w-56 items-center justify-center rounded-full border-8 border-blue-600/45 bg-gradient-to-br from-slate-800 to-slate-950 shadow-2xl sm:h-64 sm:w-64">
-            <span className="text-5xl font-black tracking-tight text-blue-300/95 sm:text-6xl">
-              AI
-            </span>
+            <div className="relative h-36 w-36 sm:h-40 sm:w-40" aria-hidden>
+              <div className="absolute left-5 top-8 h-6 w-6 rounded-full bg-cyan-200" />
+              <div className="absolute right-5 top-8 h-6 w-6 rounded-full bg-cyan-200" />
+              <div className="absolute left-7 top-10 h-2.5 w-2.5 rounded-full bg-slate-900" />
+              <div className="absolute right-7 top-10 h-2.5 w-2.5 rounded-full bg-slate-900" />
+              <div
+                className={`absolute left-1/2 top-[4.9rem] h-3 w-14 -translate-x-1/2 rounded-full bg-cyan-300/90 sm:top-[5.25rem] ${mouthClass}`}
+              />
+            </div>
           </div>
         </div>
         <button

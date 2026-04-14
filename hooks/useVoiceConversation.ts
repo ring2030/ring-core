@@ -119,7 +119,7 @@ export function useVoiceConversation({
       if (!mounted || !shouldContinueConversation || thinking) return;
 
       if (conversationTurnRef.current >= 10) {
-        speakAndFinish("きよ子さんのお話、みっちゃんにしっかり伝えましたから、ゆっくり休んでくださいね。");
+        speakAndFinish("きよ子さんのお話、看護師さんへしっかり伝えました。ゆっくり休んでくださいね。");
         return;
       }
 
@@ -150,6 +150,8 @@ export function useVoiceConversation({
           const callId = currentCallIdRef.current;
           if (callId) {
             updateDoc(doc(getFirestoreDb(), "calls", callId), {
+              aiSummary: data.summary,
+              priority: data.priority,
               要約: data.summary,
               緊急度: data.priority,
             }).catch(() => {});

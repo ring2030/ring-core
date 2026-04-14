@@ -17,7 +17,14 @@ import PatientCard, { type PatientCardData } from "@/components/nurse/PatientCar
 import ActivityLog,  { type CallRow }        from "@/components/nurse/ActivityLog";
 import SeedDataButton from "@/components/nurse/SeedDataButton";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
+import {
+  DashboardHeader,
+  DashboardNavStrip,
+  DashboardPageFrame,
+} from "@/components/dashboard/DashboardChrome";
+import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { getFirebaseAuth, getFirestoreDb } from "@/lib/firebase";
+import { normalizeCallDoc } from "@/lib/calls/schema";
 
 // ─── 患者マスタ ───────────────────────────────────────────────────────────────
 
@@ -95,6 +102,12 @@ export default function NurseDashboard() {
   const [loading,        setLoading]        = useState(true);
   const [toasts,         setToasts]         = useState<Toast[]>([]);
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const [inviteRole, setInviteRole] = useState<"family" | "patient">("family");
+  const [invitePatientName, setInvitePatientName] = useState("きよ子");
+  const [inviteMinutes, setInviteMinutes] = useState(180);
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteLoading, setInviteLoading] = useState(false);
   const initResult = useMemo(() => {
     try {
       return {
@@ -181,21 +194,54 @@ export default function NurseDashboard() {
       }
 
       isInitialLoad.current = false;
-      setCalls(snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id:       d.id,
-          reason:   reasonStr(data.理由),
-          notes:    data.特記事項 ?? "",
-          summary:  data.要約 ?? "",
-          priority: data.緊急度 ?? 1,
-          sender:   data.送信者 ?? "不明",
-          date:     data.送信日時?.toDate() ?? new Date(),
-        };
-      }));
+      setCalls(
+        snap.docs.map((d) => {
+          const normalized = normalizeCallDoc(d.id, d.data());
+          return {
+            id: normalized.id,
+            reason: reasonStr(normalized.reasons),
+            notes: normalized.note,
+            summary: normalized.aiSummary,
+            priority: normalized.priority,
+            sender: normalized.senderName,
+            date: normalized.createdAt,
+          };
+        }),
+      );
       setLoading(false);
     }, () => setIsOnline(false));
   }, [playChime, initResult]);
+
+  const issueInvite = useCallback(async () => {
+    setInviteLoading(true);
+    setInviteError(null);
+    setInviteLink(null);
+    try {
+      const res = await fetch("/api/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: inviteRole,
+          patientName: invitePatientName.trim() || "きよ子",
+          expiresInMinutes: inviteMinutes,
+        }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string; path?: string };
+      if (!res.ok || !data.ok || !data.path) {
+        throw new Error(data.error ?? "招待URLを発行できませんでした。");
+      }
+      setInviteLink(`${window.location.origin}${data.path}`);
+    } catch (error: unknown) {
+      setInviteError(error instanceof Error ? error.message : "招待URLを発行できませんでした。");
+    } finally {
+      setInviteLoading(false);
+    }
+  }, [inviteMinutes, invitePatientName, inviteRole]);
+
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }, []);
 
   // ── 患者データ集計 ────────────────────────────────────────────────────────
   const patientData = useMemo((): PatientCardData[] => {
@@ -261,7 +307,7 @@ export default function NurseDashboard() {
         .fade-in-up   { animation: fadeInUp   0.4s ease-out forwards; }
       `}</style>
 
-      <div className="min-h-screen bg-stone-50 font-sans">
+      <DashboardPageFrame>
 
         {/* ── Toast ──────────────────────────────────────────────────────────── */}
         <div className="fixed right-4 top-4 z-[9999] flex flex-col gap-2 min-w-[260px] max-w-xs">
@@ -312,45 +358,96 @@ export default function NurseDashboard() {
         )}
 
         {/* ── ヘッダー ─────────────────────────────────────────────────────────── */}
-        <header className="border-b border-stone-200 bg-white px-6 py-4 shadow-sm">
-          <div className="mx-auto flex max-w-7xl items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-rose-100 shadow-sm">
-                <Heart className="h-5 w-5 text-rose-500" />
-              </div>
-              <div>
-                <h1 className="text-lg font-black text-stone-800">ナースステーション</h1>
-                <p className={`flex items-center gap-1.5 text-[10px] font-bold ${isOnline ? "text-emerald-500" : "text-stone-400"}`}>
-                  {isOnline ? <><Wifi className="h-3 w-3" /> リアルタイム接続中</> : <><WifiOff className="h-3 w-3" /> オフライン</>}
-                </p>
-              </div>
+        <DashboardHeader
+          title="ケアダッシュボード（看護師）"
+          subtitle={
+            <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${isOnline ? "text-emerald-500" : "text-stone-400"}`}>
+              {isOnline ? <><Wifi className="h-3 w-3" /> リアルタイム接続中</> : <><WifiOff className="h-3 w-3" /> オフライン</>}
+            </span>
+          }
+          leftIcon={
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-100 shadow-sm">
+              <Heart className="h-5 w-5 text-cyan-600" />
             </div>
-
+          }
+          rightSlot={
             <div className="flex items-center gap-3">
-              {/* DEVボタン */}
               <SeedDataButton />
-
               <div className="hidden text-right sm:block">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">担当</p>
                 <p className="flex items-center gap-1.5 font-black text-stone-700">
-                  <UserCheck className="h-4 w-4 text-rose-400" />
+                  <UserCheck className="h-4 w-4 text-cyan-500" />
                   山田 看護師（リーダー）
                 </p>
               </div>
-              <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-rose-200 bg-rose-100 text-sm font-black text-rose-600 transition-transform hover:scale-110">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cyan-200 bg-cyan-100 text-sm font-black text-cyan-700 transition-transform hover:scale-110">
                 山
               </div>
             </div>
-          </div>
-        </header>
+          }
+          contentClassName="max-w-7xl py-4"
+        />
 
-        <div className="border-b border-stone-200 bg-stone-100/90 px-4 py-2 sm:px-6">
+        <DashboardNavStrip className="sm:px-6">
           <div className="mx-auto max-w-7xl">
             <StaffLinks className="text-xs" />
           </div>
-        </div>
+        </DashboardNavStrip>
 
         <div className="mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6">
+          <AppCard tone="info">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-wider text-cyan-700">
+                  家族/患者 招待URL発行
+                </h2>
+                <p className="mt-1 text-xs text-cyan-900/80">
+                  都度発行URLで家族画面・患者画面を開けます。
+                </p>
+              </div>
+              <AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-xs">
+                ログアウト
+              </AppButton>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as "family" | "patient")}
+                className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
+              >
+                <option value="family">家族向け</option>
+                <option value="patient">患者向け</option>
+              </select>
+              <input
+                value={invitePatientName}
+                onChange={(e) => setInvitePatientName(e.target.value)}
+                className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
+                placeholder="患者名"
+              />
+              <input
+                type="number"
+                min={10}
+                max={1440}
+                value={inviteMinutes}
+                onChange={(e) => setInviteMinutes(Number(e.target.value))}
+                className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
+              />
+              <AppButton type="button" onClick={() => void issueInvite()} disabled={inviteLoading}>
+                {inviteLoading ? "発行中..." : "URL発行"}
+              </AppButton>
+            </div>
+            {inviteLink && (
+              <div className="mt-3 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs text-cyan-900">
+                <p className="font-bold">発行URL</p>
+                <p className="mt-1 break-all">{inviteLink}</p>
+              </div>
+            )}
+            {inviteError && (
+              <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
+                {inviteError}
+              </p>
+            )}
+          </AppCard>
 
           {/* ── サマリーカード ────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -391,9 +488,9 @@ export default function NurseDashboard() {
               <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
                 <Sparkles className="h-4 w-4 text-violet-400" /> AI 効果分析ダッシュボード
               </h2>
-              <span className="rounded-full border border-violet-100 bg-violet-50 px-3 py-1 text-[10px] font-black text-violet-500">
+              <StatusBadge tone="accent" className="px-3 py-1">
                 実証データ（4〜9月累計）
-              </span>
+              </StatusBadge>
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
@@ -508,7 +605,7 @@ export default function NurseDashboard() {
           <ActivityLog calls={calls} />
 
         </div>
-      </div>
+      </DashboardPageFrame>
     </>
   );
 }

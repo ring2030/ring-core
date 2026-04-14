@@ -5,26 +5,22 @@ import {
   addDoc,
   collection,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
-  Timestamp,
-  where,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
+import { normalizeCallDoc } from "@/lib/calls/schema";
 import { getVideoMessagesCollection } from "@/lib/videoMessages";
-import {
-  Clock,
-  Heart,
-  MessageCircle,
-  RefreshCw,
-  Sparkles,
-  WifiOff,
-  Video,
-} from "lucide-react";
+import { Clock, Heart, MessageCircle, RefreshCw, Sparkles, WifiOff, Video } from "lucide-react";
 import type { CallSummaryItem } from "@/app/api/family-summary/route";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
+import {
+  DashboardHeader,
+  DashboardNavStrip,
+  DashboardPageFrame,
+} from "@/components/dashboard/DashboardChrome";
+import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 
 // ─── 型 ──────────────────────────────────────────────
 
@@ -33,14 +29,14 @@ interface CallDoc {
   reasons: string[];
   notes: string;
   sender: string;
-  ts: Timestamp | null;
+  ts: Date | null;
 }
 
 // ─── ユーティリティ ────────────────────────────────────
 
-function toHHMM(ts: Timestamp | null): string {
-  if (!ts?.toDate) return "??:??";
-  const d = ts.toDate();
+function toHHMM(ts: Date | null): string {
+  if (!ts) return "??:??";
+  const d = ts;
   return (
     String(d.getHours()).padStart(2, "0") +
     ":" +
@@ -171,7 +167,12 @@ export default function FamilyDashboardPage() {
     }
   };
 
-  // ─── Firestore 購読（今日分のみ） ──────────────────────
+  const logout = useCallback(async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    window.location.href = "/login";
+  }, []);
+
+  // ─── Firestore 購読（今日分をクライアントで抽出） ──────────────────────
 
   useEffect(() => {
     let db;
@@ -184,33 +185,28 @@ export default function FamilyDashboardPage() {
       return;
     }
 
-    const q = query(
-      collection(db, "calls"),
-      where("送信日時", ">=", Timestamp.fromDate(startOfToday())),
-      where("送信日時", "<=", Timestamp.fromDate(endOfToday())),
-      orderBy("送信日時", "asc"),
-    );
+    const q = query(collection(db, "calls"));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         try {
-          const docs: CallDoc[] = snap.docs.map((d) => {
-            const raw = d.data();
-            const reasonsRaw = raw.理由;
-            const reasons = Array.isArray(reasonsRaw)
-              ? reasonsRaw
-              : typeof reasonsRaw === "string"
-                ? [reasonsRaw]
-                : [];
-            return {
-              id: d.id,
-              reasons,
-              notes: typeof raw.特記事項 === "string" ? raw.特記事項 : "",
-              sender: typeof raw.送信者 === "string" ? raw.送信者 : "不明",
-              ts: raw.送信日時 ?? null,
-            };
-          });
+          const start = startOfToday().getTime();
+          const end = endOfToday().getTime();
+          const docs: CallDoc[] = snap.docs
+            .map((d) => normalizeCallDoc(d.id, d.data()))
+            .filter((item) => {
+              const t = item.createdAt.getTime();
+              return t >= start && t <= end;
+            })
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+            .map((item) => ({
+              id: item.id,
+              reasons: item.reasons,
+              notes: item.note,
+              sender: item.senderName,
+              ts: item.createdAt,
+            }));
           setCalls(docs);
         } catch (e) {
           console.error("[family] calls map error", e);
@@ -299,42 +295,38 @@ export default function FamilyDashboardPage() {
   // ─── レンダー ────────────────────────────────────────
 
   return (
-    <div
-      className="min-h-screen font-sans"
-      style={{ background: "linear-gradient(160deg, #fdf6ec 0%, #fce7f3 100%)" }}
-    >
+    <DashboardPageFrame>
       {/* ヘッダー */}
-      <header
-        className="border-b border-amber-200/60 shadow-sm"
-        style={{ background: "linear-gradient(90deg, #fde68a 0%, #fbcfe8 100%)" }}
-      >
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-6 py-5">
+      <DashboardHeader
+        title="ケアダッシュボード（家族）"
+        subtitle={
+          <span className="inline-flex items-center gap-1.5">
+            <Clock size={13} />
+            {dateLabel}のようす
+          </span>
+        }
+        leftIcon={<span className="text-4xl">💗</span>}
+        rightSlot={
           <div className="flex items-center gap-3">
-            <span className="text-4xl">🌸</span>
-            <div>
-              <h1 className="text-xl font-bold text-stone-700">
-                きよ子おばあちゃんの今日のようす
-              </h1>
-              <p className="flex items-center gap-1.5 text-sm text-stone-500">
-                <Clock size={13} />
-                {dateLabel}
-              </p>
-            </div>
+            <Heart size={28} className="text-cyan-500" fill="currentColor" />
+            <AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-xs">
+              ログアウト
+            </AppButton>
           </div>
-          <Heart size={28} className="text-rose-400" fill="currentColor" />
-        </div>
-      </header>
+        }
+        contentClassName="max-w-5xl"
+      />
 
-      <div className="border-b border-amber-200/50 bg-amber-50/80 px-4 py-2">
-        <div className="mx-auto max-w-3xl">
+      <DashboardNavStrip>
+        <div className="mx-auto max-w-5xl">
           <StaffLinks className="text-xs" />
         </div>
-      </div>
+      </DashboardNavStrip>
 
-      <main className="mx-auto max-w-3xl space-y-6 px-6 py-8">
+      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8">
 
         {/* 動画レター（Firebase Storage + messages） */}
-        <section className="rounded-3xl border border-violet-200/60 bg-white/80 p-6 shadow-md backdrop-blur-sm">
+        <AppCard className="border-violet-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-violet-700">
             <Video size={18} className="text-violet-500" />
             動画レター（おばあちゃんの画面に届きます）
@@ -377,7 +369,7 @@ export default function FamilyDashboardPage() {
           {videoUploadError && (
             <p className="mt-3 text-sm text-red-500">⚠️ {videoUploadError}</p>
           )}
-        </section>
+        </AppCard>
 
         {/* Firestore エラー */}
         {firestoreError && (
@@ -388,21 +380,22 @@ export default function FamilyDashboardPage() {
         )}
 
         {/* ─── AI 孫娘メッセージ ─── */}
-        <section className="rounded-3xl border border-rose-200/60 bg-white/80 p-6 shadow-md backdrop-blur-sm">
+        <AppCard className="border-rose-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-bold text-rose-600">
               <Sparkles size={18} className="text-rose-400" />
               AI 孫娘からのメッセージ
             </h2>
-            <button
+            <AppButton
               type="button"
+              tone="secondary"
               disabled={aiLoading || loading}
               onClick={() => generateSummary(calls)}
-              className="flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-500 transition hover:bg-rose-100 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-rose-600"
             >
               <RefreshCw size={12} className={aiLoading ? "animate-spin" : ""} />
               更新
-            </button>
+            </AppButton>
           </div>
 
           {/* メッセージ本文 */}
@@ -431,10 +424,10 @@ export default function FamilyDashboardPage() {
               <p className="text-sm text-stone-400">メッセージを生成できませんでした。</p>
             )}
           </div>
-        </section>
+        </AppCard>
 
         {/* ─── 今日の統計 ─── */}
-        <section className="rounded-3xl border border-amber-200/60 bg-white/80 p-6 shadow-md backdrop-blur-sm">
+        <AppCard className="border-amber-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-amber-700">
             <MessageCircle size={18} className="text-amber-500" />
             今日の呼び出しまとめ
@@ -468,16 +461,16 @@ export default function FamilyDashboardPage() {
               />
             </div>
           )}
-        </section>
+        </AppCard>
 
         {/* ─── 今日のタイムライン ─── */}
-        <section className="rounded-3xl border border-stone-200/60 bg-white/80 p-6 shadow-md backdrop-blur-sm">
+        <AppCard className="border-stone-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-stone-600">
             <Clock size={18} className="text-stone-400" />
             今日の呼び出し履歴
-            <span className="ml-auto rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-stone-500">
+            <StatusBadge tone="neutral" className="ml-auto text-xs font-medium">
               {calls.length} 件
-            </span>
+            </StatusBadge>
           </h2>
 
           {loading ? (
@@ -519,7 +512,7 @@ export default function FamilyDashboardPage() {
               ))}
             </ul>
           )}
-        </section>
+        </AppCard>
 
         {/* フッター */}
         <p className="text-center text-xs text-stone-400">
@@ -528,6 +521,6 @@ export default function FamilyDashboardPage() {
           接続中
         </p>
       </main>
-    </div>
+    </DashboardPageFrame>
   );
 }

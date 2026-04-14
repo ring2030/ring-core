@@ -1,6 +1,8 @@
 "use client";
 
 import { Bell } from "lucide-react";
+import { StatusBadge } from "@/components/ui/ThemePrimitives";
+import { getPriorityBadge } from "@/lib/dashboard/priorityBadge";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -14,14 +16,6 @@ export interface CallRow {
 }
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
-
-const P_CFG = {
-  5: { label: "最優先",   badge: "bg-red-100 text-red-700 border-red-200"    },
-  4: { label: "急ぎ対応", badge: "bg-orange-100 text-orange-700 border-orange-200" },
-  3: { label: "通常対応", badge: "bg-amber-100 text-amber-700 border-amber-200"  },
-  2: { label: "経過観察", badge: "bg-sky-100 text-sky-700 border-sky-200"    },
-  1: { label: "記録のみ", badge: "bg-stone-100 text-stone-500 border-stone-200" },
-} as const;
 
 const REASON_EMOJI: Record<string, string> = {
   "トイレ": "🚽", "お話": "💬", "痛い": "🚨", "寂しい": "🤝",
@@ -60,7 +54,7 @@ export default function ActivityLog({ calls }: { calls: CallRow[] }) {
           </thead>
           <tbody className="divide-y divide-stone-50">
             {calls.slice(0, 20).map((c) => {
-              const cfg = P_CFG[c.priority as keyof typeof P_CFG] ?? P_CFG[1];
+              const badge = getPriorityBadge(c.priority);
               return (
                 <tr
                   key={c.id}
@@ -76,9 +70,7 @@ export default function ActivityLog({ calls }: { calls: CallRow[] }) {
                     {REASON_EMOJI[c.reason] ?? "📋"} {c.reason}
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full border px-2.5 py-0.5 text-[9px] font-black ${cfg.badge}`}>
-                      {cfg.label}
-                    </span>
+                    <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
                   </td>
                   <td className="max-w-xs truncate px-4 py-3 text-stone-400">
                     {c.summary || "—"}

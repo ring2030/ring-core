@@ -22,6 +22,9 @@ export function StaffLinks({ className = "" }: { className?: string }) {
       <Link href="/dashboard/nurse" className="rounded-lg bg-rose-100 px-3 py-1.5 font-medium text-rose-900 hover:bg-rose-200">
         ナース
       </Link>
+      <Link href="/login" className="rounded-lg bg-cyan-100 px-3 py-1.5 font-medium text-cyan-900 hover:bg-cyan-200">
+        ログイン
+      </Link>
       <Link href="/dashboard/history" className="rounded-lg bg-slate-200 px-3 py-1.5 font-medium text-slate-800 hover:bg-slate-300">
         履歴
       </Link>
