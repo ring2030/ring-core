@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { buildCallWritePayload } from "@/lib/calls/schema";
@@ -493,6 +494,17 @@ export default function GrandmaGazePage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
+      <div className="fixed left-1/2 top-4 z-[10002] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/90 px-3 py-2 shadow-lg backdrop-blur-md">
+        <span className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-bold text-white">
+          患者はこちら
+        </span>
+        <Link
+          href="/nurse-login"
+          className="rounded-full border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-100"
+        >
+          看護師はこちら
+        </Link>
+      </div>
 
       {!audioReady && (
         <div className="pointer-events-none fixed bottom-8 left-1/2 z-[10001] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/90 px-5 py-2.5 text-sm text-slate-200 shadow-lg backdrop-blur-md animate-pulse">
