@@ -4,7 +4,7 @@ import { memo } from "react";
 
 type TargetButtonProps = {
   label: "トイレ" | "お話";
-  subtitle: string;
+  subtitle?: string;
   isActive: boolean;
   progress: number;
   colors: {
@@ -36,11 +36,13 @@ function TargetButton({ label, subtitle, isActive, progress, colors }: TargetBut
       <span className="relative z-10 max-w-[95%] text-center text-[clamp(4rem,18vmin,11rem)] font-black leading-none tracking-tight text-slate-50">
         {label}
       </span>
-      <span
-        className={`relative z-10 mt-3 max-w-[90%] text-center text-[clamp(0.95rem,2.8vmin,1.35rem)] font-semibold ${colors.subtitle}`}
-      >
-        {subtitle}
-      </span>
+      {subtitle ? (
+        <span
+          className={`relative z-10 mt-3 max-w-[90%] text-center text-[clamp(0.95rem,2.8vmin,1.35rem)] font-semibold ${colors.subtitle}`}
+        >
+          {subtitle}
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -73,7 +75,6 @@ export const GazeTargetPanel = memo(function GazeTargetPanel({ target, progress 
     <div className="mx-auto mt-2 flex min-h-[min(68vh,480px)] w-full max-w-6xl flex-row gap-4 max-[640px]:min-h-[52vh] max-[640px]:flex-col max-[640px]:gap-4 sm:mt-4 sm:min-h-[65vh] sm:gap-6 sm:max-w-7xl">
       <TargetButton
         label="トイレ"
-        subtitle="じゃまをしないでね"
         isActive={target === "トイレ"}
         progress={progress}
         colors={TOILET_COLORS}

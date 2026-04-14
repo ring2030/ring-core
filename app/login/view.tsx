@@ -11,7 +11,8 @@ type Props = {
 
 export function LoginClient({ nextPath, initialErrorCode }: Props) {
   const router = useRouter();
-  const [passcode, setPasscode] = useState("");
+  const [loginId, setLoginId] = useState("");
+  const [password, setPassword] = useState("");
   const [inviteToken, setInviteToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -24,7 +25,7 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
       const res = await fetch("/api/auth/nurse-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode }),
+        body: JSON.stringify({ loginId, password }),
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!res.ok || !json.ok) {
@@ -65,11 +66,21 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
           <p className="mt-2 text-sm text-slate-300">看護師ダッシュボードに入るための画面です。</p>
           <form className="mt-6 space-y-4" onSubmit={handleNurseLogin}>
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-200">パスコード</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-200">ログインID</span>
+              <input
+                type="text"
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 outline-none ring-cyan-400 focus:ring"
+                autoComplete="username"
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-slate-200">パスワード</span>
               <input
                 type="password"
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 outline-none ring-cyan-400 focus:ring"
                 autoComplete="current-password"
               />
@@ -83,7 +94,7 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
             </button>
           </form>
           <div className="mt-5 text-xs text-slate-400">
-            パスコードは `NURSE_LOGIN_PASSCODE` で設定できます。
+            初期アカウントは ID: <code>1</code> / パスワード: <code>1</code> です。
           </div>
         </section>
 

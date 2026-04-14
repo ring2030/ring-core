@@ -1,0 +1,11 @@
+{
+  "accounts": [
+    {
+      "id": "1",
+      "passwordHash": "ffbf43c688fe7994fd2eb62417d48855d35dd0ac114685aa1cdedf63514e27be",
+      "disabled": false,
+      "createdAt": "2026-04-14T11:28:54.776Z",
+      "updatedAt": "2026-04-14T11:28:54.776Z"
+    }
+  ]
+}
