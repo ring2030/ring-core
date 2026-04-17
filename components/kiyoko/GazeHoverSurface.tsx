@@ -91,7 +91,7 @@ export function GazeHoverSurface({
 
   useEffect(() => {
     if (disabled || !gazeData) {
-      // 視線が無い / 無効化中ならカウントを止める
+      // Pause dwell when gaze is missing or disabled
       onPointerLeave();
       return;
     }
@@ -158,7 +158,7 @@ export function GazeHoverSurface({
         {children}
       </div>
       <p className="pointer-events-none absolute bottom-4 left-0 right-0 z-[1] text-center text-sm font-medium opacity-80 max-[480px]:bottom-2 max-[480px]:text-xs">
-        カーソルを2秒止めると確定
+        Hold still ~2s to confirm
       </p>
     </div>
   );

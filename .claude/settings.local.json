@@ -19,7 +19,21 @@
       "Bash(git show:*)",
       "Bash(node:*)",
       "Bash(cat C:/Users/user/Desktop/ring-core/next.config.*)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(python -c \"import pptx; print\\(pptx.__version__\\)\")",
+      "Bash(pip install:*)",
+      "Bash(python3 -c \"import pptx; print\\(pptx.__version__\\)\")",
+      "Bash(python3 -m pip install python-pptx -q)",
+      "Bash(python3 -c \"from pptx import Presentation; print\\('ok'\\)\")",
+      "Bash(python3 -m pip install python-pptx)",
+      "Bash(where python3:*)",
+      "Bash(where python:*)",
+      "Bash(py --version)",
+      "Bash(cmd /c \"python --version\")",
+      "Bash(cmd /c \"python -c \\\\\"from pptx import Presentation; print\\('pptx ok'\\)\\\\\"\")",
+      "Bash(npm list:*)",
+      "Bash(npm install:*)",
+      "Bash(cmd:*)"
     ]
   }
 }

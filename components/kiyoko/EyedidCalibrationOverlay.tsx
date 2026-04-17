@@ -61,38 +61,38 @@ export function EyedidCalibrationOverlay({
               onClick={onRetrySdk}
               className="mt-2 rounded-full bg-red-900/80 px-4 py-2 text-xs text-red-50 underline-offset-2 hover:bg-red-800 sm:text-sm"
             >
-              もう一度試す
+              Try again
             </button>
           ) : null}
         </div>
       ) : null}
 
       <div className="flex flex-col items-center px-4 pt-8 pb-4 text-center sm:pt-12">
-        <p className="text-2xl font-bold text-white sm:text-3xl">視線の初期調整（1〜5点）</p>
+        <p className="text-xl font-bold text-white sm:text-2xl md:text-3xl">Gaze calibration (5 points)</p>
 
         {showCameraGate ? (
           <>
             <p className="mt-6 max-w-lg text-base leading-relaxed text-cyan-200 sm:text-lg">
-              まず<strong>カメラを起動</strong>してください。許可ダイアログが出たら「許可」を選びます。
+              Start by turning on the <strong>camera</strong>. If prompted, choose <strong>Allow</strong>.
             </p>
             <button
               type="button"
               onClick={() => onCameraStart?.()}
-              className="mt-10 min-h-[56px] rounded-full bg-cyan-600 px-10 py-4 text-xl font-bold text-white shadow-lg transition hover:bg-cyan-500 active:scale-[0.98] sm:text-2xl"
+              className="mt-10 min-h-[56px] rounded-full bg-cyan-600 px-8 py-4 text-lg font-bold text-white shadow-lg transition hover:bg-cyan-500 active:scale-[0.98] sm:px-10 sm:text-xl"
             >
-              カメラを開始して調整する
+              Start camera & calibrate
             </button>
             <p className="mt-4 max-w-md text-xs text-slate-500 sm:text-sm">
-              カメラ映像は画面に大きくは出ませんが、裏で視線の検出に使われます。
+              Video stays small; it is only used for gaze detection in the background.
             </p>
           </>
         ) : (
           <>
             <p className="mt-3 max-w-lg text-base leading-relaxed text-cyan-200 sm:text-lg">
-              画面に出る丸に<strong>視線を合わせて</strong>ください。自動で次の点に進みます。
+              <strong>Look at</strong> each dot on screen. It advances automatically.
             </p>
             <p className="mt-2 text-sm text-slate-400">
-              カメラの許可が求められたら「許可」を選んでください。
+              If the browser asks for camera access, choose Allow.
             </p>
           </>
         )}
@@ -104,8 +104,8 @@ export function EyedidCalibrationOverlay({
           aria-live="polite"
         >
           <div className="h-16 w-16 animate-pulse rounded-full bg-red-500 shadow-[0_0_40px_rgba(239,68,68,0.7)]" />
-          <p className="max-w-xl text-center text-lg font-bold text-cyan-100 sm:text-xl">
-            点の位置を読み込んでいます。顔を画面の中央付近に入れてください。
+          <p className="max-w-xl text-center text-base font-bold text-cyan-100 sm:text-lg">
+            Loading dot position. Keep your face near the center of the screen.
           </p>
         </div>
       )}
@@ -116,22 +116,22 @@ export function EyedidCalibrationOverlay({
           aria-live="assertive"
         >
           <p className="text-5xl">⚠️</p>
-          <p className="max-w-lg text-center text-xl font-bold text-red-300 sm:text-2xl">
-            Eyedid の初期化がタイムアウトしました
+          <p className="max-w-lg text-center text-lg font-bold text-red-300 sm:text-xl">
+            Eyedid initialization timed out
           </p>
-          <p className="max-w-lg text-center text-base text-slate-300 sm:text-lg">
-            ライセンス認証かネットワークに問題がある可能性があります。
+          <p className="max-w-lg text-center text-sm text-slate-300 sm:text-base">
+            License or network may be failing.
             <br />
-            カメラは動いていますので、<strong className="text-emerald-300">虹彩モード（MediaPipe）</strong>で続行できます。
+            If the camera works, continue with <strong className="text-emerald-300">iris mode (MediaPipe)</strong>.
           </p>
           <div className="flex flex-col gap-3 sm:flex-row">
             {onSwitchToIris && (
               <button
                 type="button"
                 onClick={onSwitchToIris}
-                className="min-h-[52px] rounded-full bg-emerald-600 px-8 py-3 text-lg font-bold text-white shadow-lg hover:bg-emerald-500"
+                className="min-h-[52px] rounded-full bg-emerald-600 px-6 py-3 text-base font-bold text-white shadow-lg hover:bg-emerald-500 sm:text-lg"
               >
-                虹彩モードに切り替える
+                Switch to iris mode
               </button>
             )}
             {onRetrySdk && (
@@ -140,7 +140,7 @@ export function EyedidCalibrationOverlay({
                 onClick={() => { setDotTimedOut(false); onRetrySdk(); }}
                 className="min-h-[52px] rounded-full border border-slate-500 bg-slate-800 px-6 py-3 text-base text-slate-200 hover:bg-slate-700"
               >
-                Eyedid を再試行
+                Retry Eyedid
               </button>
             )}
           </div>
@@ -149,7 +149,7 @@ export function EyedidCalibrationOverlay({
             onClick={onSkip}
             className="text-sm text-slate-400 underline underline-offset-4 hover:text-slate-200"
           >
-            精度なしでスキップ
+            Skip (lower accuracy)
           </button>
         </div>
       )}
@@ -208,7 +208,7 @@ export function EyedidCalibrationOverlay({
           onClick={onSkip}
           className="text-sm text-slate-400 underline decoration-slate-500 underline-offset-4 hover:text-slate-200"
         >
-          スキップ（精度が下がります）
+          Skip (lower accuracy)
         </button>
       </div>
     </div>

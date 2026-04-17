@@ -11,7 +11,7 @@ const T = {
   /** Cursor lands on Chat quickly; gauge starts here too. */
   CURSOR_ARRIVE: 700,
   GAUGE_START: 700,
-  /** Longer dwell so the fill feels gradual (じわじわ). SUBMIT − GAUGE_START ≈ 7.8s */
+  /** Longer dwell so the fill ramps gradually. SUBMIT − GAUGE_START ≈ 7.8s */
   SUBMIT: 8500,
   VIDEO_END: 15_200,
   NURSE_END: 18_200,
@@ -45,7 +45,7 @@ function demoCursorPosition(elapsed: number, w: number, h: number): { x: number;
   return { x: x0 + (x1 - x0) * e, y: y0 + (y1 - y0) * e };
 }
 
-/** Smoothstep: slow start & slow end (more “じわじわ” than linear). */
+/** Smoothstep: slow start & slow end (gentler than linear). */
 function smoothstep01(t: number): number {
   const x = Math.min(1, Math.max(0, t));
   return x * x * (3 - 2 * x);

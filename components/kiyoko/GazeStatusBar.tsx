@@ -8,14 +8,14 @@ type Props = {
   errorMessage: string | null;
   onRestartCamera: () => void;
   onUsePointerInstead: () => void;
-  /** 虹彩: 準備済みだが顔未検出のときだけ */
+  /** Iris: ready but face not detected */
   faceHint: string | null;
-  /** Eyedid などでカメラ待ちのとき */
+  /** Eyedid: waiting on camera */
   showCameraRestartHint: boolean;
 };
 
 /**
- * メイン画面用の最小ステータス。詳細な切替・調整は /settings へ。
+ * Minimal status strip for the main screen. Advanced tuning lives under /settings.
  */
 export function GazeStatusBar({
   errorMessage,
@@ -32,7 +32,7 @@ export function GazeStatusBar({
         <Link
           href="/settings"
           className="pointer-events-auto flex size-12 items-center justify-center rounded-2xl border border-white/10 bg-slate-950/75 text-slate-200 shadow-lg backdrop-blur-md transition hover:bg-slate-900/90 hover:text-white"
-          aria-label="設定"
+          aria-label="Settings"
         >
           <Settings className="size-6" strokeWidth={1.75} />
         </Link>
@@ -53,14 +53,14 @@ export function GazeStatusBar({
                 onClick={onRestartCamera}
                 className="min-h-[44px] rounded-full border border-red-400/50 bg-red-900/50 px-4 py-2 text-sm text-red-50 transition hover:bg-red-900/80"
               >
-                もう一度試す
+                Try again
               </button>
               <button
                 type="button"
                 onClick={onUsePointerInstead}
                 className="min-h-[44px] rounded-full bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow hover:bg-violet-500"
               >
-                タッチで操作
+                Use touch
               </button>
             </div>
           </div>
@@ -82,7 +82,7 @@ export function GazeStatusBar({
             onClick={onRestartCamera}
             className="pointer-events-auto min-h-[44px] rounded-full bg-slate-800/90 px-5 py-2 text-sm text-slate-100 shadow-lg backdrop-blur-md hover:bg-slate-700"
           >
-            カメラを再起動
+            Restart camera
           </button>
         </div>
       )}

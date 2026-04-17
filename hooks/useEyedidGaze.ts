@@ -129,7 +129,7 @@ export function useEyedidGaze({
       const x = typeof window !== "undefined" ? Math.floor(window.innerWidth / 2) : 0;
       easy.setCameraPosition(x, cameraOnTop);
       onStatusMessageRef.current(
-        `カメラを「モニタ${cameraOnTop ? "上" : "下"}」前提にしました（まだ反応しない場合は再キャリブ）`,
+        `Camera set to ${cameraOnTop ? "above" : "below"} the monitor (recalibrate if gaze feels off)`,
       );
     } catch (e) {
       console.error("[Eyedid] setCameraPosition", e);
@@ -152,9 +152,9 @@ export function useEyedidGaze({
       const license = getEyedidLicenseKey();
       if (!license) {
         setLicenseError(
-          "Eyedid のライセンスキーが未設定です。.env.local に NEXT_PUBLIC_EYEDID_LICENSE_KEY を設定してください。",
+          "Eyedid license key is missing. Set NEXT_PUBLIC_EYEDID_LICENSE_KEY in .env.local.",
         );
-        onStatusMessageRef.current("ライセンス未設定");
+        onStatusMessageRef.current("License not configured");
         return;
       }
 
@@ -174,9 +174,9 @@ export function useEyedidGaze({
         UserStatusOption = seesoMod.UserStatusOption;
         InitializationErrorType = seesoMod.InitializationErrorType;
       } catch (e) {
-        console.error("[Eyedid] SDK の読み込みに失敗しました", e);
+        console.error("[Eyedid] SDK load failed", e);
         if (!cancelled) {
-          setInitError("視線 SDK の読み込みに失敗しました。ページを再読み込みしてください。");
+          setInitError("Failed to load gaze SDK. Reload the page.");
         }
         return;
       }
@@ -190,12 +190,12 @@ export function useEyedidGaze({
       try {
         errCode = await ez.seeso.initialize(license, userOpt);
       } catch (e) {
-        console.error("[Eyedid] initialize が例外を投げました", e);
+        console.error("[Eyedid] initialize threw", e);
         if (!cancelled) {
           setInitError(
-            "Eyedid SDK の初期化処理で通信エラーが発生しました。ネットワークを確認してください。",
+            "Eyedid SDK initialization failed (network). Check your connection.",
           );
-          onStatusMessageRef.current("初期化エラー");
+          onStatusMessageRef.current("Init error");
         }
         return;
       }
@@ -204,7 +204,7 @@ export function useEyedidGaze({
         console.warn("[Eyedid] initialize errCode =", errCode);
         if (!cancelled) {
           setInitError(describeEyedidInitError(errCode));
-          onStatusMessageRef.current("初期化エラー");
+          onStatusMessageRef.current("Init error");
         }
         return;
       }
@@ -243,14 +243,14 @@ export function useEyedidGaze({
         lastGazeAtRef.current = now;
         onGazePointRef.current(gazeInfo.x, gazeInfo.y);
         onGazeActivityRef.current();
-        onStatusMessageRef.current("視線を検知中...");
+        onStatusMessageRef.current("Tracking gaze…");
       };
 
       try {
         const ok = await easy.startTracking(runGaze, () => {});
         if (!ok) {
           if (!cancelled) {
-            setInitError("視線トラッキングを開始できませんでした。");
+            setInitError("Could not start gaze tracking.");
           }
           return;
         }
@@ -272,8 +272,8 @@ export function useEyedidGaze({
         const name = e instanceof Error ? e.name : "";
         const msg =
           name === "NotAllowedError" || name === "PermissionDeniedError"
-            ? "カメラの使用が拒否されました。ブラウザのアドレスバー横の設定でカメラを許可してください。"
-            : "カメラを起動できませんでした。接続と権限を確認してください。";
+            ? "Camera access was denied. Allow the camera in your browser settings."
+            : "Could not start the camera. Check device and permissions.";
         if (!cancelled) setInitError(msg);
         console.error("[Eyedid] getUserMedia / startTracking", e);
         return;
@@ -301,13 +301,13 @@ export function useEyedidGaze({
         }
         if (!cancelled) {
           // キャッシュ適用後も「準備」のままだと誤解されやすい。視線コールバックまでの案内に切り替える
-          onStatusMessageRef.current("視線を検知中...");
+          onStatusMessageRef.current("Tracking gaze…");
           onCalibrationCompleteRef.current();
         }
         return;
       }
 
-      onStatusMessageRef.current("視線を準備しています...");
+      onStatusMessageRef.current("Preparing gaze…");
 
       // 1〜5 点キャリブレーション（SDK 組み込み）
       setCalUi({ dot: null, progress: 0 });
@@ -335,7 +335,7 @@ export function useEyedidGaze({
           }
           if (!cancelled) {
             setCalUi({ dot: null, progress: 0 });
-            onStatusMessageRef.current("視線を検知中...");
+            onStatusMessageRef.current("Tracking gaze…");
             onCalibrationCompleteRef.current();
           }
         },
@@ -343,7 +343,7 @@ export function useEyedidGaze({
       );
 
       if (!started && !cancelled) {
-        setInitError("キャリブレーションを開始できませんでした。");
+        setInitError("Could not start calibration.");
       }
     }
 
@@ -406,7 +406,7 @@ export function useEyedidGaze({
         lastGazeAtRef.current = now;
         onGazePointRef.current(gazeInfo.x, gazeInfo.y);
         onGazeActivityRef.current();
-        onStatusMessageRef.current("視線を検知中...");
+        onStatusMessageRef.current("Tracking gaze…");
       };
 
       try {

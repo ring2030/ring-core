@@ -1,55 +1,53 @@
 import { NextResponse } from "next/server";
 import { requireServerEnv } from "@/lib/validateEnv";
 
-// ─── トリアージレスポンス型 ────────────────────────────────────
+// --- Triage API response ---
 export interface TriageResponse {
-  response: string;  // おばあちゃんへの返事（20文字以内）
-  summary:  string;  // 看護師向け要約
-  priority: number;  // 緊急度 1〜5（5が最高）
+  response: string; // Spoken line for the resident (English; short)
+  summary: string; // Staff-facing summary (English)
+  priority: number; // 1–5 (5 = highest)
 }
 
-// ─── システムプロンプト（フェイク会話ターン方式） ─────────────────
-// v1beta API は systemInstruction 非対応のため、最初のターンとして埋め込む
+// --- System prompt (fake first turn; v1beta has no systemInstruction) ---
 const SYSTEM_PRIMER = [
   {
     role: "user",
     parts: [
       {
         text:
-          "あなたはおばあちゃん「きよ子さん」の言葉を理解するAIトリアージエンジンです。\n\n" +
-          "おばあちゃんの発言に対し、必ず以下のJSONだけを返してください。説明文は不要です。\n" +
+          "You are an AI triage engine for Kiyoko, an older adult. She may speak Japanese; you must still answer with English in `response` and `summary` (for TTS and staff notes).\n\n" +
+          "Return ONLY valid JSON, no other text:\n" +
           "{\n" +
-          '  "response": "おばあちゃんへの返事",\n' +
-          '  "summary": "看護師向けの短い状況要約（例: トイレの訴え）",\n' +
-          '  "priority": 緊急度の数値（1〜5、5が最高）\n' +
+          '  "response": "Short reassuring line for the resident (English)",\n' +
+          '  "summary": "Brief situation for nurses (English, e.g. restroom request)",\n' +
+          '  "priority": integer from 1 to 5 (5 = highest urgency)\n' +
           "}\n\n" +
-          "【トリアージ基準】\n" +
-          "5: 転倒・骨折・激しい痛みの訴え → 最優先\n" +
-          "4: トイレの訴え・強い不安・助けを呼ぶ → 急ぎ対応\n" +
-          "3: 通常の介助依頼・水が欲しいなど → 通常対応\n" +
-          "2: 寂しい・眠れない・つぶやき → 経過観察\n" +
-          "1: 挨拶・世間話・雑談・質問 → 会話を楽しむ\n\n" +
-          "【返事のルール】\n" +
-          "・緊急度4〜5のときは相槌なしで即行動を伝える（例:「すぐ行きます！」「今すぐ向かいます！」）。20文字以内で簡潔に。\n" +
-          "・緊急度3のときは「うんうん」などの相槌を文頭に入れ、要求を受け止める。30文字以内。\n" +
-          "・緊急度1〜2のときは話題に正面から答える。質問には具体的に答え、話を自然につなげる（文字数制限なし、ただし話しやすい長さで）。\n" +
-          "・難しい言葉は使わない。「です・ます」よりも親しみやすい口調で。\n" +
-          "・日本語の語を勝手に言い換えない。ユーザーが言った語（例: お出かけ日和）は同じ語で返す。\n" +
-          "・聞き取りが曖昧な語は捏造しない（例: 人名を勝手に作らない）。不明なら短く確認する。\n\n" +
-          "ルールを理解したら「はい、わかりました」とだけ答えてください。",
+          "Triage scale:\n" +
+          "5: Fall, fracture, severe pain, acute medical distress → treat as emergency\n" +
+          "4: Restroom urgent, strong distress, calling for help → respond fast\n" +
+          "3: Routine assistance (water, meds, repositioning)\n" +
+          "2: Loneliness, insomnia, low mood → supportive check-in\n" +
+          "1: Greeting, small talk, questions → friendly conversation\n\n" +
+          "Style rules:\n" +
+          "- Priority 4–5: no filler; state immediate action (e.g. “I’m getting help now.”). Keep `response` very short.\n" +
+          "- Priority 3: brief acknowledgment + reassurance; keep `response` concise.\n" +
+          "- Priority 1–2: warm, clear English; answer questions directly when possible.\n" +
+          "- Do not invent names or facts. If unclear, ask a short clarifying question.\n" +
+          "- Echo important nouns the user used when repeating them adds clarity (romanization is fine).\n\n" +
+          "If you understand, reply with exactly: OK",
       },
     ],
   },
   {
     role: "model",
-    parts: [{ text: "はい、わかりました。" }],
+    parts: [{ text: "OK" }],
   },
 ] as const;
 
-// ─── フォールバック ────────────────────────────────────────────
+// --- Fallback ---
 const FALLBACK: TriageResponse = {
-  response: "うんうん、聞こえましたよ。",
-  summary:  "通信エラーのため詳細不明",
+  response: "I hear you. Take it easy.",
+  summary:  "Network error — details unknown",
   priority: 1,
 };
 let apiBackoffUntil = 0;
@@ -57,8 +55,7 @@ let apiBackoffUntil = 0;
 export function localTriage(message: string): TriageResponse {
   const text = String(message ?? "").replace(/\s+/g, "");
 
-  // ── 緊急度5: 痛み・外傷・救助要請 ────────────────────────────────
-  // 漢字・ひらがな両方に対応（音声認識はひらがなで返ることが多い）
+  // Priority 5: pain, injury, rescue (matches kanji & hiragana ASR output)
   const emergency5 = new RegExp(
     "痛|いた[いよ]|いたみ|いたくて|" +
     "苦し|くるし[いよ]|きつ[いよ]|しんど[いよ]|" +
@@ -72,7 +69,7 @@ export function localTriage(message: string): TriageResponse {
     "救急|きゅうきゅう|救けて"
   );
 
-  // ── 緊急度4: トイレ・急ぎ介助 ──────────────────────────────────
+  // Priority 4: restroom / urgent assist
   const urgent4 = new RegExp(
     "トイレ|とれい|お手洗い|おてあらい|化粧室|" +
     "おしっこ|おしっこが|うんこ|うんち|大便|小便|" +
@@ -81,7 +78,7 @@ export function localTriage(message: string): TriageResponse {
     "すぐ来て|すぐきて"
   );
 
-  // ── 緊急度2: 寂しさ・不安・精神的苦痛 ──────────────────────────
+  // Priority 2: loneliness / distress
   const mental2 = new RegExp(
     "寂し|さびし|さみし|" +
     "一人|ひとり|" +
@@ -92,7 +89,7 @@ export function localTriage(message: string): TriageResponse {
     "泣きた|なきた[いよ]"
   );
 
-  // ── 緊急度3: 一般介助依頼 ────────────────────────────────────
+  // Priority 3: routine assistance
   const assist3 = new RegExp(
     "水|みず|お茶|おちゃ|飲み物|のみもの|" +
     "寒い|さむ[いよ]|暑い|あつ[いよ]|" +
@@ -104,57 +101,56 @@ export function localTriage(message: string): TriageResponse {
 
   if (emergency5.test(text)) {
     return {
-      response: "大丈夫ですか？今すぐ看護師さんが向かいます！",
-      summary: "【至急】痛みや体調異常の訴え",
+      response: "I’m sending help right away. Stay with me.",
+      summary: "Urgent: pain or acute distress",
       priority: 5,
     };
   }
 
   if (urgent4.test(text)) {
     return {
-      response: "うんうん、分かりました。今すぐ向かいますね！",
-      summary: "トイレ・緊急介助の希望",
+      response: "On my way — someone will be there very soon.",
+      summary: "Urgent restroom / toileting help",
       priority: 4,
     };
   }
 
   if (mental2.test(text)) {
     const responses = [
-      "寂しいですよね。大丈夫ですよ、すぐ会いに行きますね。",
-      "ここにいますよ。一人じゃないですからね、安心して。",
-      "そうですよね。みっちゃんもきよ子さんのこと、いつも気にしていますよ。",
+      "You’re not alone. We’re here with you.",
+      "I’m right here. We’ll come sit with you.",
+      "That sounds hard. The team cares about you.",
     ];
     return {
       response: responses[Math.floor(Math.random() * responses.length)],
-      summary: "寂しさ・不安・精神的苦痛の訴え",
+      summary: "Loneliness / anxiety / emotional distress",
       priority: 2,
     };
   }
 
   if (assist3.test(text)) {
     const responses = [
-      "はい、分かりました。今すぐ用意しますね。",
-      "そうですね、すぐ持っていきますよ。",
-      "了解しました。看護師さんに伝えますね。",
+      "Got it — we’ll bring that to you.",
+      "Understood. A nurse will help shortly.",
+      "Okay — we’re on it.",
     ];
     return {
       response: responses[Math.floor(Math.random() * responses.length)],
-      summary: "一般介助依頼（水・薬・体位など）",
+      summary: "Routine assistance (water, meds, repositioning)",
       priority: 3,
     };
   }
 
-  // ── 通常の会話 ───────────────────────────────────────────────
   const casualResponses = [
-    "そうなんですね。もう少し聞かせてください。",
-    "うんうん、なるほどですね。看護師さんにも伝えておきますね。",
-    "きよ子さんのお話、いつも楽しいですよ。もっと聞かせてください。",
-    "そうですか。他に何か気になることはありますか？",
+    "Tell me a bit more when you’re ready.",
+    "I’m listening — we’ll let the team know.",
+    "Thanks for sharing. Anything else on your mind?",
+    "I’m with you. What would help most right now?",
   ];
 
   return {
     response: casualResponses[Math.floor(Math.random() * casualResponses.length)],
-    summary: "日常的な会話・様子見",
+    summary: "Casual conversation / routine check-in",
     priority: 1,
   };
 }
@@ -204,12 +200,12 @@ async function tryGeminiGenerate(params: {
   for (const base of baseCandidates) {
     for (const model of modelCandidates) {
       const url = `${base}/models/${model}:generateContent?key=${encodeURIComponent(params.apiKey)}`;
-      console.log(`[Gemini] 送信先: ${base}/models/${model}`);
+      console.log(`[Gemini] endpoint: ${base}/models/${model}`);
       const isV1beta = /\/v1beta$/i.test(base);
       const generationConfig = isV1beta
         ? {
             maxOutputTokens: 200,
-            // 日本語の言い換え暴走を抑える
+            // Low temperature to reduce rambling / paraphrase drift
             temperature: 0.25,
             responseMimeType: "application/json",
             responseSchema: {
@@ -240,7 +236,7 @@ async function tryGeminiGenerate(params: {
         ],
         generationConfig,
       };
-      console.log(`[Gemini] リクエスト内容:`, JSON.stringify({
+      console.log(`[Gemini] request:`, JSON.stringify({
         model,
         message: params.message,
         generationConfig,
@@ -260,9 +256,9 @@ async function tryGeminiGenerate(params: {
         clearTimeout(timeout);
         const errMsg =
           e instanceof Error && e.name === "AbortError"
-            ? "request timeout (12s超過)"
+            ? "request timeout (>12s)"
             : toErrorMessage(e);
-        console.error(`[Gemini] fetch失敗:`, errMsg);
+        console.error(`[Gemini] fetch failed:`, errMsg);
         lastError = {
           ok: false,
           status: 599,
@@ -274,7 +270,7 @@ async function tryGeminiGenerate(params: {
       }
       clearTimeout(timeout);
       const bodyText = await res.text();
-      console.log(`[Gemini] レスポンス HTTP ${res.status}:`, bodyText.slice(0, 400));
+      console.log(`[Gemini] HTTP ${res.status}:`, bodyText.slice(0, 400));
       if (res.ok) {
         let data: unknown = {};
         try {
@@ -287,11 +283,10 @@ async function tryGeminiGenerate(params: {
 
       lastError = { ok: false, status: res.status, bodyText, model, base };
 
-      // モデル未対応・APIバージョン差異は次候補へ試行
+      // Wrong model / API shape → try next candidate
       if (res.status === 404 || res.status === 400) continue;
-      // 429 でも別モデルで通ることがあるため継続
       if (res.status === 429) continue;
-      // 認可エラーやその他は即終了
+      // Auth errors → stop
       if (res.status === 401 || res.status === 403) return lastError;
     }
   }
@@ -299,38 +294,37 @@ async function tryGeminiGenerate(params: {
   return lastError;
 }
 
-// ─── ルートハンドラ ────────────────────────────────────────────
+// --- Route handler ---
 export async function POST(req: Request) {
   let message = "";
   try {
     const body = await req.json();
     message = String(body?.message ?? "");
     const history: { role: string; text: string }[] = Array.isArray(body?.history) ? body.history : [];
-    console.log(`\n====== [API /chat] リクエスト受信 ======`);
-    console.log(`[API /chat] ユーザー発言: "${message}"`);
+    console.log(`\n====== [API /chat] request ======`);
+    console.log(`[API /chat] message: "${message}"`);
 
     if (!message) {
-      console.log(`[API /chat] 空メッセージのため早期リターン`);
+      console.log(`[API /chat] empty message → early return`);
       return NextResponse.json({
-        response: "もう一度話しかけてくださいね。",
-        summary:  "無音または空メッセージ",
+        response: "Please try speaking again when you’re ready.",
+        summary: "Silent or empty message",
         priority: 1,
       } satisfies TriageResponse);
     }
 
     const apiKey = requireServerEnv("GEMINI_API_KEY");
 
-    // 直近で 429 が発生した場合は、短時間は外部APIを叩かず即時フォールバック
     if (Date.now() < apiBackoffUntil) {
       const remaining = Math.round((apiBackoffUntil - Date.now()) / 1000);
-      console.log(`[API /chat] APIバックオフ中 (残り約${remaining}秒) → localTriage使用`);
+      console.log(`[API /chat] API backoff (${remaining}s left) → localTriage`);
       const local = localTriage(message);
-      console.log(`[API /chat] localTriage結果:`, local);
+      console.log(`[API /chat] localTriage:`, local);
       return NextResponse.json(local satisfies TriageResponse);
     }
 
     const apiBase = process.env.GEMINI_API_BASE?.replace(/\/$/, "");
-    // 日本語の安定性重視。必要なら .env.local の GEMINI_MODEL で上書き可能
+    // Override with GEMINI_MODEL in .env.local if needed
     const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 
     const result = await tryGeminiGenerate({
@@ -343,24 +337,23 @@ export async function POST(req: Request) {
 
     if (!result.ok) {
       if (result.status === 429) {
-        // Gemini が教えてくれる retryDelay を尊重し、日次枠切れは長期停止する
-        let backoffMs = 90_000; // デフォルト90秒
+        let backoffMs = 90_000;
         try {
           const errJson = JSON.parse(result.bodyText) as GeminiErrorEnvelope;
           const details = Array.isArray(errJson?.error?.details)
             ? errJson.error.details
             : [];
 
-          // retryDelay フィールドをパース（例: "25s" → 25000ms）
+          // Parse retryDelay (e.g. "25s" → ms)
           const retryInfo = details.find((d): d is RetryInfoDetail => {
             return isRecord(d) && typeof d["@type"] === "string" && d["@type"].includes("RetryInfo");
           });
           if (retryInfo?.retryDelay) {
             const secs = parseFloat(String(retryInfo.retryDelay).replace(/[^0-9.]/g, ""));
-            if (!isNaN(secs) && secs > 0) backoffMs = (secs + 10) * 1000; // +10s バッファ
+            if (!isNaN(secs) && secs > 0) backoffMs = (secs + 10) * 1000;
           }
 
-          // 日次枠切れ（GenerateRequestsPerDayPerProjectPerModel）は当日中使わない
+          // Daily quota exhausted → back off until tomorrow
           const quotaFailure = details.find((d): d is QuotaFailureDetail => {
             return isRecord(d) && typeof d["@type"] === "string" && d["@type"].includes("QuotaFailure");
           });
@@ -368,7 +361,7 @@ export async function POST(req: Request) {
             (v) => v.quotaId === "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
           );
           if (isDailyExhausted) {
-            // 翌日の 00:00 (UTC+9) まで停止（最短6時間を保証）
+            // Until next midnight JST (min 6h)
             const nowJst = new Date(Date.now() + 9 * 3_600_000);
             const tomorrowJstMidnight = new Date(
               Date.UTC(
@@ -381,16 +374,16 @@ export async function POST(req: Request) {
             console.warn("Gemini daily quota exhausted – local triage only until tomorrow");
           }
         } catch {
-          // パース失敗はデフォルト値のまま
+          /* keep default backoff */
         }
         apiBackoffUntil = Date.now() + backoffMs;
       }
       console.error(
-        `[API /chat] Geminiエラー HTTP ${result.status} | model=${result.model} | base=${result.base}\n`,
+        `[API /chat] Gemini error HTTP ${result.status} | model=${result.model} | base=${result.base}\n`,
         result.bodyText.slice(0, 300),
       );
       const local = localTriage(message);
-      console.log(`[API /chat] localTriage結果 (API失敗):`, local);
+      console.log(`[API /chat] localTriage (API error):`, local);
       return NextResponse.json(local satisfies TriageResponse);
     }
 
@@ -404,7 +397,7 @@ export async function POST(req: Request) {
     const rawText: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "{}";
 
-    console.log(`[API /chat] Gemini生レスポンステキスト: ${rawText.slice(0, 200)}`);
+    console.log(`[API /chat] Gemini raw text: ${rawText.slice(0, 200)}`);
 
     let triage: TriageResponse;
     try {
@@ -418,13 +411,13 @@ export async function POST(req: Request) {
       triage = { ...FALLBACK, response: rawText.slice(0, 40) || FALLBACK.response };
     }
 
-    console.log(`[API /chat] 最終レスポンス (Gemini成功):`, triage);
-    console.log(`====== [API /chat] 完了 ======\n`);
+    console.log(`[API /chat] final (Gemini):`, triage);
+    console.log(`====== [API /chat] done ======\n`);
     return NextResponse.json(triage satisfies TriageResponse);
   } catch (error: unknown) {
-    console.error(`[API /chat] 例外発生:`, toErrorMessage(error));
+    console.error(`[API /chat] exception:`, toErrorMessage(error));
     const local = localTriage(message);
-    console.log(`[API /chat] localTriage結果 (例外):`, local);
+    console.log(`[API /chat] localTriage (exception):`, local);
     return NextResponse.json(local satisfies TriageResponse);
   }
 }

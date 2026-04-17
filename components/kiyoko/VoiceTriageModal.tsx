@@ -6,27 +6,22 @@ import { getFirestoreDb } from "@/lib/firebase";
 import { buildCallWritePayload } from "@/lib/calls/schema";
 import { triageFromTranscript } from "@/lib/kiyoko/triageFromTranscript";
 
-const REASSURANCE =
-  "看護師さんに伝えたよ。安心して待っててね。";
+const REASSURANCE = "The nurse team knows. You can rest easy.";
 
-/** 無音のままこの時間でタイムアウト（空または途中までの認識で送信） */
+/** Silence timeout: if no usable speech, still submit partial or empty transcript. */
 const ABSOLUTE_LISTEN_MS = 26000;
 
-async function saveVoiceCall(t: {
-  理由: string;
-  緊急度: string;
-  認識文: string;
-}) {
-  const priority = t.緊急度 === "高" ? 4 : t.緊急度 === "中" ? 3 : 2;
+async function saveVoiceCall(t: { reason: string; urgency: "high" | "low"; transcript: string }) {
+  const priority = t.urgency === "high" ? 4 : 2;
   await addDoc(
     collection(getFirestoreDb(), "calls"),
     buildCallWritePayload({
-      reasons: [t.理由],
+      reasons: [t.reason],
       note: "",
-      senderName: "きよ子",
+      senderName: "Kiyoko",
       senderRole: "patient",
       priority,
-      transcript: t.認識文,
+      transcript: t.transcript,
     }),
   );
 }
@@ -40,39 +35,11 @@ function getSpeechRecognitionCtor(): (new () => SpeechRecognition) | null {
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
-function pickJapaneseVoice(): SpeechSynthesisVoice | null {
-  const list = speechSynthesis.getVoices();
-  const ja = list.filter((v) => v.lang.toLowerCase().startsWith("ja"));
-  if (ja.length === 0) return null;
-  const warm =
-    ja.find((v) =>
-      /female|女性|さとみ|kyoko|nanami|ゆかり|nozomi/i.test(v.name),
-    ) ?? ja[0];
-  return warm ?? null;
-}
-
 function speakReassurance() {
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(REASSURANCE);
-  u.lang = "ja-JP";
-  u.rate = 0.92;
-  u.pitch = 1.05;
-
-  const applyVoice = () => {
-    const voice = pickJapaneseVoice();
-    if (voice) u.voice = voice;
-  };
-  applyVoice();
-
-  const onVoices = () => applyVoice();
-  speechSynthesis.addEventListener("voiceschanged", onVoices);
-
-  const detach = () => {
-    speechSynthesis.removeEventListener("voiceschanged", onVoices);
-  };
-
-  u.onend = detach;
-  u.onerror = detach;
+  u.lang = "en-US";
+  u.rate = 0.95;
   speechSynthesis.speak(u);
 }
 
@@ -107,7 +74,7 @@ function FamilyFaceHero() {
           </span>
         </div>
         <p className="mt-2 px-4 text-center text-sm font-semibold text-amber-950/75 sm:text-base">
-          家族の顔（ダミー・あとから写真に差し替えできます）
+          Family faces (placeholder — swap for photos later)
         </p>
       </div>
     </div>
@@ -158,7 +125,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       console.error(e);
       speechSynthesis.cancel();
       setErrorDetail(
-        "Firebaseへの保存に失敗しました。.env.local と Firestore ルールを確認してください。",
+        "Could not save to Firebase. Check .env.local and Firestore rules.",
       );
       setPhase("unsupported");
       return;
@@ -174,7 +141,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       processedRef.current = false;
       finalBufferRef.current = "";
       latestTranscriptRef.current = "";
-      // eslint react-hooks/set-state-in-effect 対策: setState を effect 本体から非同期に逃がします。
+      // eslint react-hooks/set-state-in-effect: defer setState out of the effect body.
       void Promise.resolve().then(() => {
         setPhase("listen");
         setLiveText("");
@@ -186,7 +153,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
     processedRef.current = false;
     finalBufferRef.current = "";
     latestTranscriptRef.current = "";
-    // eslint react-hooks/set-state-in-effect 対策: setState を effect 本体から非同期に逃がします。
+    // eslint react-hooks/set-state-in-effect: defer setState out of the effect body.
     void Promise.resolve().then(() => {
       setPhase("listen");
       setLiveText("");
@@ -198,7 +165,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       void Promise.resolve().then(() => {
         setPhase("unsupported");
         setErrorDetail(
-          "このブラウザでは Web Speech API（音声認識）が使えません。Chrome（PC）推奨です。",
+          "This browser does not support speech recognition. Try Chrome on desktop.",
         );
       });
       return;
@@ -240,7 +207,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
         cleanupRecognition();
         setPhase("mic_denied");
         setErrorDetail(
-          "マイクの使用が許可されていません。アドレスバーの鍵アイコンから許可してください。",
+          "Microphone access denied. Allow it from the lock icon in the address bar.",
         );
         return;
       }
@@ -265,7 +232,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       console.error(e);
       void Promise.resolve().then(() => {
         setPhase("mic_denied");
-        setErrorDetail("マイクを起動できませんでした。");
+        setErrorDetail("Could not start the microphone.");
       });
     }
 
@@ -303,7 +270,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
           disabled={phase === "saving"}
           className="rounded-full bg-white/15 px-4 py-2 text-sm font-bold text-white hover:bg-white/25 disabled:opacity-40"
         >
-          閉じる
+          Close
         </button>
       </div>
 
@@ -314,20 +281,20 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
               id="voice-modal-title"
               className="text-[clamp(1.25rem,5.5vmin,2rem)] font-bold leading-snug text-amber-100"
             >
-              伝えました
+              Sent
             </p>
             <p className="text-[clamp(1.5rem,6.5vmin,2.75rem)] font-black leading-tight tracking-tight text-white drop-shadow-lg">
               {REASSURANCE}
             </p>
             <p className="text-sm text-slate-400">
-              同じ内容を音声でも読み上げています（音量をご確認ください）
+              Reading aloud — check your volume
             </p>
             <button
               type="button"
               onClick={handleClose}
               className="mt-4 rounded-2xl bg-white px-8 py-4 text-lg font-bold text-slate-800 shadow-lg hover:bg-amber-50"
             >
-              戻る
+              Back
             </button>
           </div>
         ) : phase === "saving" ? (
@@ -336,7 +303,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
               className="size-16 animate-spin rounded-full border-4 border-white/20 border-t-amber-300"
               aria-hidden
             />
-            <p className="text-xl font-bold">送信中…</p>
+            <p className="text-xl font-bold">Sending…</p>
           </div>
         ) : phase === "unsupported" || phase === "mic_denied" ? (
           <div className="max-w-md px-4 text-center">
@@ -344,7 +311,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
               id="voice-modal-title"
               className="text-xl font-bold text-red-200"
             >
-              {phase === "mic_denied" ? "マイクを使えません" : "利用できません"}
+              {phase === "mic_denied" ? "Microphone blocked" : "Not supported"}
             </p>
             <p className="mt-4 text-base leading-relaxed text-slate-200">
               {errorDetail}
@@ -354,22 +321,21 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
               onClick={handleClose}
               className="mt-8 rounded-2xl bg-amber-400 px-8 py-3 font-bold text-slate-900"
             >
-              戻る
+              Back
             </button>
           </div>
         ) : (
           <>
             <h2 id="voice-modal-title" className="sr-only">
-              音声でお話しください
+              Speak to send
             </h2>
             <FamilyFaceHero />
             <div className="w-full max-w-xl px-2 text-center">
               <p className="text-xl font-bold text-white sm:text-2xl">
-                マイク ON · 聞いています
+                Mic on · listening
               </p>
               <p className="mt-2 text-base text-amber-100/90">
-                「痛い」「転んだ」「助けて」→ 緊急：高　／　「寂しい」「呼びたい」など →
-                緊急：低
+                “Pain”, “fell”, “help” → urgent · “Lonely”, “call someone” → lower urgency
               </p>
               <div
                 className="mt-6 min-h-[4.5rem] rounded-2xl border border-white/20 bg-black/30 px-4 py-3 text-left text-lg leading-relaxed text-white"
@@ -379,7 +345,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
                   liveText
                 ) : (
                   <span className="text-slate-500">
-                    聞き取り中…（話し終えたら下のボタンですぐ送れます）
+                    Listening… tap the button below when you’re done
                   </span>
                 )}
               </div>
@@ -388,7 +354,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
                 onClick={handleTapToFinish}
                 className="mt-6 w-full max-w-md rounded-2xl border-2 border-amber-300/80 bg-amber-500/20 py-4 text-lg font-bold text-amber-100 hover:bg-amber-500/30"
               >
-                話し終わった（今の内容で送る）
+                Done — send this
               </button>
             </div>
           </>

@@ -15,14 +15,14 @@ export async function POST(req: Request) {
     const password = String(body.password ?? "");
     if (!loginId || !password) {
       return NextResponse.json(
-        { ok: false, error: "IDとパスワードを入力してください。" },
+        { ok: false, error: "Enter login ID and password." },
         { status: 401 },
       );
     }
     const ok = await verifyNurseCredentials(loginId, password);
     if (!ok) {
       return NextResponse.json(
-        { ok: false, error: "IDまたはパスワードが正しくありません。" },
+        { ok: false, error: "Invalid login ID or password." },
         { status: 401 },
       );
     }
@@ -39,7 +39,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ ok: true, nurseId: loginId });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "ログイン処理に失敗しました。";
+    const message = error instanceof Error ? error.message : "Sign-in failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }

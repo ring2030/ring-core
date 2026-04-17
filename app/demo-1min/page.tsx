@@ -20,47 +20,47 @@ type Scene = {
 const SCENES: Scene[] = [
   {
     atMs: 0,
-    title: "1) 看護師ログイン",
-    subtitle: "/login で看護師がログイン",
-    detail: "看護師はパスコードでログインし、ダッシュボードに入ります。",
+    title: "1) Staff sign-in",
+    subtitle: "Nurse logs in at /login",
+    detail: "Staff signs in with ID and password, then opens the dashboard.",
     accent: "from-cyan-500 to-blue-500",
-    where: "入力場所: /login の「パスコード」欄",
-    inputLabel: "ログインID / パスワード",
-    inputExample: "例: ID 1 / PW 1",
-    actionLabel: "「看護師として入る」を押して認証",
+    where: "Where: login fields on /login",
+    inputLabel: "Login ID / password",
+    inputExample: "e.g. ID 1 / PW 1",
+    actionLabel: "Tap “Continue as staff”",
   },
   {
     atMs: 15_000,
-    title: "2) 招待URL発行",
-    subtitle: "/dashboard/nurse でURLを発行",
-    detail: "家族向け/患者向けの招待URLを発行して、そのまま共有します。",
+    title: "2) Create invite link",
+    subtitle: "Issue URL on /dashboard/nurse",
+    detail: "Create a family or patient invite and share the link.",
     accent: "from-emerald-500 to-cyan-500",
-    where: "入力場所: /dashboard/nurse の「家族/患者 招待URL発行」欄",
-    inputLabel: "患者名 / 有効分 / 役割",
-    inputExample: "例: きよ子 / 180分 / 家族向け",
-    actionLabel: "「URL発行」を押して、生成URLをコピー",
+    where: "Where: “Family / patient invite link” on /dashboard/nurse",
+    inputLabel: "Name / minutes / role",
+    inputExample: "e.g. Kiyoko / 180 / Family",
+    actionLabel: "Tap “Create link” and copy the URL",
   },
   {
     atMs: 30_000,
-    title: "3) 患者が呼び出し",
-    subtitle: "/kiyoko または / で利用",
-    detail: "患者がトイレ・会話を選択すると、看護師側へリアルタイム反映されます。",
+    title: "3) Resident calls",
+    subtitle: "Use /kiyoko or home /",
+    detail: "Choosing restroom or talk updates the nurse view in real time.",
     accent: "from-amber-500 to-orange-500",
-    where: "操作場所: 患者画面 /kiyoko",
-    inputLabel: "入力は不要",
-    inputExample: "「トイレ🚽」または「ねぇねぇ」を選択",
-    actionLabel: "2秒見つめると送信",
+    where: "Where: resident screen /kiyoko",
+    inputLabel: "No typing required",
+    inputExample: "Choose “Restroom” or “Hey”",
+    actionLabel: "Hold gaze ~2s to send",
   },
   {
     atMs: 45_000,
-    title: "4) 家族が状況確認",
-    subtitle: "/access?token=... から自動入室",
-    detail: "家族ダッシュボードで当日の様子と履歴、AIメッセージを確認できます。",
+    title: "4) Family checks in",
+    subtitle: "Opens via /access?token=…",
+    detail: "Family dashboard shows today’s activity, history, and AI note.",
     accent: "from-violet-500 to-fuchsia-500",
-    where: "認証場所: 受け取った招待URLを開く",
-    inputLabel: "必要なら /login の「招待トークン」欄",
-    inputExample: "URL内 token=... を貼り付け",
-    actionLabel: "「招待トークンで入る」を押す",
+    where: "Where: open the invite URL you received",
+    inputLabel: "Or use /login → invite token",
+    inputExample: "Paste token=… from the URL",
+    actionLabel: "Tap “Continue with token”",
   },
 ];
 
@@ -100,9 +100,9 @@ export default function DemoOneMinutePage() {
     <main className="min-h-screen bg-slate-950 px-5 py-8 text-slate-100">
       <div className="mx-auto w-full max-w-5xl space-y-5">
         <header className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl">
-          <h1 className="text-2xl font-black sm:text-3xl">1分デモ（自動再生）</h1>
+          <h1 className="text-2xl font-black sm:text-3xl">One-minute walkthrough</h1>
           <p className="mt-2 text-sm text-slate-300">
-            看護師ログイン → 招待URL発行 → 患者呼び出し → 家族確認までを60秒で確認できます。
+            Staff login → invite → resident call → family view, in 60 seconds.
           </p>
           <div className="mt-4 h-3 overflow-hidden rounded-full bg-slate-800">
             <div
@@ -112,7 +112,7 @@ export default function DemoOneMinutePage() {
           </div>
           <div className="mt-2 flex items-center justify-between text-xs text-slate-400">
             <span>{sec}s / 60s</span>
-            <span>残り {remaining}s</span>
+            <span>{remaining}s left</span>
           </div>
         </header>
 
@@ -121,7 +121,7 @@ export default function DemoOneMinutePage() {
             <div className={`h-2 bg-gradient-to-r ${scene.accent}`} />
             <div className="p-6">
               <p className="text-xs font-black tracking-widest text-cyan-300">NOW PLAYING</p>
-              <h2 className="mt-2 text-3xl font-black leading-tight">{scene.title}</h2>
+              <h2 className="mt-2 text-2xl font-black leading-tight sm:text-3xl">{scene.title}</h2>
               <p className="mt-2 text-lg text-slate-300">{scene.subtitle}</p>
               <p className="mt-5 text-sm leading-relaxed text-slate-400">{scene.detail}</p>
               <div className="mt-5 rounded-2xl border border-cyan-900/70 bg-slate-950/60 p-4 text-sm">
@@ -150,7 +150,7 @@ export default function DemoOneMinutePage() {
                       }`}
                     >
                       <p className="text-xs font-bold">Scene {idx + 1}</p>
-                      <p className="mt-1 font-semibold">{s.title}</p>
+                      <p className="mt-1 line-clamp-2 font-semibold">{s.title}</p>
                     </div>
                   );
                 })}
@@ -159,20 +159,34 @@ export default function DemoOneMinutePage() {
           </div>
 
           <aside className="rounded-3xl border border-slate-800 bg-slate-900/80 p-5 shadow-2xl">
-            <h3 className="text-sm font-black tracking-widest text-slate-300">迷わない手順</h3>
+            <h3 className="text-sm font-black tracking-widest text-slate-300">Quick steps</h3>
             <ol className="mt-3 list-decimal space-y-2 pl-4 text-sm text-slate-300">
-              <li><code>/login</code> でパスコード認証</li>
-              <li><code>/dashboard/nurse</code> で招待URL発行</li>
-              <li>患者は <code>/kiyoko</code> で操作</li>
-              <li>家族は招待URLで閲覧</li>
+              <li>
+                <code>/login</code> — staff sign-in
+              </li>
+              <li>
+                <code>/dashboard/nurse</code> — create invite
+              </li>
+              <li>
+                Resident uses <code>/kiyoko</code>
+              </li>
+              <li>Family opens the invite URL</li>
             </ol>
 
-            <h3 className="mt-6 text-sm font-black tracking-widest text-slate-300">クイックリンク</h3>
+            <h3 className="mt-6 text-sm font-black tracking-widest text-slate-300">Links</h3>
             <div className="mt-3 space-y-2 text-sm">
-              <p><code>/login</code> 看護師入口</p>
-              <p><code>/dashboard/nurse</code> 看護師画面</p>
-              <p><code>/kiyoko</code> 患者画面</p>
-              <p><code>/dashboard/family</code> 家族画面</p>
+              <p>
+                <code>/login</code> — staff
+              </p>
+              <p>
+                <code>/dashboard/nurse</code> — nurse
+              </p>
+              <p>
+                <code>/kiyoko</code> — resident
+              </p>
+              <p>
+                <code>/dashboard/family</code> — family
+              </p>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <button
@@ -183,21 +197,21 @@ export default function DemoOneMinutePage() {
                 }}
                 className="rounded-xl bg-cyan-500 px-4 py-2 text-xs font-black text-white hover:bg-cyan-600"
               >
-                先頭から再生
+                Play from start
               </button>
               <button
                 type="button"
                 onClick={() => setPlaying((v) => !v)}
                 className="rounded-xl border border-slate-600 bg-slate-800 px-4 py-2 text-xs font-black text-slate-200 hover:bg-slate-700"
               >
-                {playing ? "一時停止" : "再開"}
+                {playing ? "Pause" : "Resume"}
               </button>
             </div>
             <Link
               href="/demo"
               className="mt-6 inline-block text-xs text-slate-400 underline-offset-4 hover:text-slate-200 hover:underline"
             >
-              既存の画面デモ（/demo）を見る
+              Open screen-record demo (/demo)
             </Link>
           </aside>
         </section>

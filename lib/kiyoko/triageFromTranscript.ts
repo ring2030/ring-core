@@ -1,9 +1,9 @@
-/** 音声認識テキストから緊急度をキーワードで判定（AI自動トリアージ・ルールベース） */
+/** Rule-based triage from speech transcript (Japanese keyword matching). */
 
 export type VoiceTriage = {
-  緊急度: "高" | "低";
-  理由: string;
-  認識文: string;
+  urgency: "high" | "low";
+  reason: string;
+  transcript: string;
 };
 
 function clip(s: string, max = 100) {
@@ -16,9 +16,9 @@ export function triageFromTranscript(raw: string): VoiceTriage {
   const text = raw.trim();
   if (!text) {
     return {
-      緊急度: "低",
-      理由: "音声が聞き取れませんでした",
-      認識文: "",
+      urgency: "low",
+      reason: "No speech captured",
+      transcript: "",
     };
   }
 
@@ -49,22 +49,22 @@ export function triageFromTranscript(raw: string): VoiceTriage {
 
   if (hitHigh) {
     return {
-      緊急度: "高",
-      理由: `痛い・転倒・助け（音声）「${short}」`,
-      認識文: text,
+      urgency: "high",
+      reason: `Voice — pain / fall / help (“${short}”)`,
+      transcript: text,
     };
   }
   if (hitLow) {
     return {
-      緊急度: "低",
-      理由: `寂しい・呼びたい（音声）「${short}」`,
-      認識文: text,
+      urgency: "low",
+      reason: `Voice — lonely / wants company (“${short}”)`,
+      transcript: text,
     };
   }
 
   return {
-    緊急度: "低",
-    理由: `お話（音声・一般）「${short}」`,
-    認識文: text,
+    urgency: "low",
+    reason: `Voice — general (“${short}”)`,
+    transcript: text,
   };
 }

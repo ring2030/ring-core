@@ -44,12 +44,13 @@ import {
   type NurseInputMode,
 } from "@/lib/gaze/inputModeStorage";
 import { Volume2 } from "lucide-react";
+import { REASON_CHAT, REASON_RESTROOM, type BinaryGazeReason } from "@/lib/calls/reasons";
 
 export default function GrandmaGazePage() {
   const [gazePoint, setGazePoint] = useState({ x: -100, y: -100 });
-  const [target, setTarget] = useState<"トイレ" | "お話" | null>(null);
+  const [target, setTarget] = useState<BinaryGazeReason | null>(null);
   const [progress, setProgress] = useState(0);
-  const [statusMessage, setStatusMessage] = useState("カメラを準備しています...");
+  const [statusMessage, setStatusMessage] = useState("Preparing camera…");
   const [inputMode, setInputMode] = useState<NurseInputMode>("eyedid");
 
   const [isSuccess, setIsSuccess] = useState(false);
@@ -81,16 +82,16 @@ export default function GrandmaGazePage() {
     if (mode === "pointer") {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
-      setStatusMessage("タッチ・マウスで操作");
+      setStatusMessage("Touch or mouse");
     } else if (useIris) {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
-      setStatusMessage("視線を検知中…");
+      setStatusMessage("Tracking gaze…");
     } else {
       const fresh = hasFreshEyedidCalibration();
       setIsCalibrating(!fresh);
       setCameraSessionStarted(fresh);
-      setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています...");
+      setStatusMessage(fresh ? "Tracking gaze…" : "Preparing camera…");
     }
     setGazeHydrated(true);
   }, []);
@@ -119,18 +120,18 @@ export default function GrandmaGazePage() {
     if (mode === "pointer") {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
-      setStatusMessage("タッチ・マウスで操作");
+      setStatusMessage("Touch or mouse");
       setGazePoint({ x: -100, y: -100 });
     } else if (gazeMode) {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
-      setStatusMessage("視線を検知中…");
+      setStatusMessage("Tracking gaze…");
       setBootstrapVersion((k) => k + 1);
     } else {
       const fresh = hasFreshEyedidCalibration();
       setIsCalibrating(!fresh);
       setCameraSessionStarted(fresh);
-      setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています...");
+      setStatusMessage(fresh ? "Tracking gaze…" : "Preparing camera…");
       setBootstrapVersion((k) => k + 1);
     }
   }, [gazeMode]);
@@ -142,13 +143,13 @@ export default function GrandmaGazePage() {
     if (useIris) {
       setIsCalibrating(false);
       setCameraSessionStarted(true);
-      setStatusMessage("視線を検知中…");
+      setStatusMessage("Tracking gaze…");
       setIrisRestartKey((k) => k + 1);
     } else {
       const fresh = hasFreshEyedidCalibration();
       setIsCalibrating(!fresh);
       setCameraSessionStarted(fresh);
-      setStatusMessage(fresh ? "視線を検知中…" : "カメラを準備しています…");
+      setStatusMessage(fresh ? "Tracking gaze…" : "Preparing camera…");
       setBootstrapVersion((k) => k + 1);
     }
   }, []);
@@ -232,11 +233,11 @@ export default function GrandmaGazePage() {
     setProgress(0);
     setTarget(null);
     setGazePoint({ x: -100, y: -100 });
-    setStatusMessage("視線を検知中…");
+    setStatusMessage("Tracking gaze…");
   }, []);
 
   const { aiText, isListening, isThinking } = useVoiceConversation({
-    active: isSuccess && sentReason === "お話",
+    active: isSuccess && sentReason === REASON_CHAT,
     currentCallIdRef,
     conversationHistoryRef,
     conversationTurnRef,
@@ -255,21 +256,21 @@ export default function GrandmaGazePage() {
       const name = e instanceof Error ? e.name : "";
       if (name === "NotAllowedError" || name === "PermissionDeniedError") {
         setCameraGateError(
-          "カメラの使用が拒否されました。アドレスバー横の鍵アイコンから「許可」にしてください。",
+          "Camera access was denied. Use the lock icon in the address bar and allow the camera.",
         );
       } else {
         setCameraGateError(
-          "カメラを起動できませんでした。カメラの接続とブラウザの設定を確認してください。",
+          "Could not start the camera. Check the device and browser settings.",
         );
       }
     }
   }, []);
 
   const submitCall = useCallback(
-    async (reason: string) => {
+    async (reason: BinaryGazeReason) => {
       setIsSuccess(true);
       setSentReason(reason);
-      if (reason === "お話") {
+      if (reason === REASON_CHAT) {
         conversationTurnRef.current = 0;
         conversationHistoryRef.current = [];
       }
@@ -281,10 +282,13 @@ export default function GrandmaGazePage() {
           collection(getFirestoreDb(), "calls"),
           buildCallWritePayload({
             reasons: [reason],
-            note: reason === "トイレ" ? "視線入力からの自動送信" : "AI会話開始",
-            senderName: "きよ子",
+            note:
+              reason === REASON_RESTROOM
+                ? "Sent via gaze input"
+                : "AI conversation started",
+            senderName: "Kiyoko",
             senderRole: "patient",
-            priority: reason === "トイレ" ? 4 : 2,
+            priority: reason === REASON_RESTROOM ? 4 : 2,
           }),
         );
         currentCallIdRef.current = docRef.id;
@@ -292,7 +296,7 @@ export default function GrandmaGazePage() {
         /* ignore */
       }
 
-      if (reason === "トイレ") {
+      if (reason === REASON_RESTROOM) {
         setTimeout(() => resetToMain(), 5000);
       }
     },
@@ -323,12 +327,12 @@ export default function GrandmaGazePage() {
     onLeftSelect: () => {
       if (hasSubmittedRef.current) return;
       hasSubmittedRef.current = true;
-      void submitCall("トイレ");
+      void submitCall(REASON_RESTROOM);
     },
     onRightSelect: () => {
       if (hasSubmittedRef.current) return;
       hasSubmittedRef.current = true;
-      void submitCall("お話");
+      void submitCall(REASON_CHAT);
     },
     onActivity: resetSleepTimer,
   });
@@ -377,7 +381,7 @@ export default function GrandmaGazePage() {
 
   const gazeRef = useRef(gazePoint);
   gazeRef.current = gazePoint;
-  const targetRef = useRef<"トイレ" | "お話" | null>(null);
+  const targetRef = useRef<BinaryGazeReason | null>(null);
   targetRef.current = target;
   const targetStabilityRef = useRef<TargetStabilityState>(INITIAL_TARGET_STABILITY);
 
@@ -449,11 +453,11 @@ export default function GrandmaGazePage() {
   const displayGazeY =
     irisUiActive && irisFaceDetected ? windowHeight * 0.58 : gazePoint.y;
 
-  const displayTarget: "トイレ" | "お話" | null = irisUiActive
+  const displayTarget: BinaryGazeReason | null = irisUiActive
     ? irisZone === "left"
-      ? "トイレ"
+      ? REASON_RESTROOM
       : irisZone === "right"
-        ? "お話"
+        ? REASON_CHAT
         : null
     : target;
 
@@ -474,20 +478,20 @@ export default function GrandmaGazePage() {
     state_irisReady &&
     !irisFaceDetected &&
     !combinedError
-      ? "顔を画面に向けてください"
+      ? "Face the screen"
       : null;
 
   const showCameraRestartHint =
     Boolean(!combinedError &&
       inputMode === "eyedid" &&
       !gazeMode &&
-      (statusMessage.includes("カメラを準備") || statusMessage.includes("準備しています")));
+      (statusMessage.includes("Preparing camera") || statusMessage.includes("Preparing")));
 
   if (!gazeHydrated) {
     return (
       <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
         <div className="h-10 w-10 animate-spin rounded-full border-2 border-cyan-500/25 border-t-cyan-400" aria-hidden />
-        <p className="mt-5 text-lg text-cyan-100/85">準備しています…</p>
+        <p className="mt-5 text-lg text-cyan-100/85">Loading…</p>
       </div>
     );
   }
@@ -496,20 +500,20 @@ export default function GrandmaGazePage() {
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
       <div className="fixed left-1/2 top-4 z-[10002] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/90 px-3 py-2 shadow-lg backdrop-blur-md">
         <span className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-bold text-white">
-          患者はこちら
+          Patient
         </span>
         <Link
           href="/nurse-login"
           className="rounded-full border border-cyan-300 bg-cyan-50 px-3 py-1 text-xs font-bold text-cyan-700 hover:bg-cyan-100"
         >
-          看護師はこちら
+          Staff login
         </Link>
       </div>
 
       {!audioReady && (
         <div className="pointer-events-none fixed bottom-8 left-1/2 z-[10001] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/90 px-5 py-2.5 text-sm text-slate-200 shadow-lg backdrop-blur-md animate-pulse">
           <Volume2 className="size-4 shrink-0 text-amber-300/90" strokeWidth={2} aria-hidden />
-          <span>画面を一度タップすると音が鳴ります</span>
+          <span>Tap once to enable sound</span>
         </div>
       )}
 
@@ -564,15 +568,15 @@ export default function GrandmaGazePage() {
 
       {isSuccess ? (
         <div className="flex h-full w-full flex-col items-center justify-center px-8">
-          {sentReason === "トイレ" ? (
+          {sentReason === REASON_RESTROOM ? (
             <div className="rounded-[4rem] border-8 border-orange-600/45 bg-gradient-to-br from-slate-900 to-slate-950 p-16 text-center shadow-2xl sm:p-24">
-              <h1 className="mb-8 text-[clamp(2.5rem,10vmin,6rem)] font-black leading-tight text-orange-300">
-                看護師さんを
+              <h1 className="mb-8 text-[clamp(2rem,8vmin,5rem)] font-black leading-tight text-orange-300">
+                Calling
                 <br />
-                呼ぶね
+                your nurse
               </h1>
-              <p className="text-[clamp(1.25rem,4vmin,3rem)] font-bold text-slate-300">
-                いま連絡したから、安心して待っててね。
+              <p className="text-[clamp(1.1rem,3.5vmin,2.5rem)] font-bold text-slate-300">
+                We’ve notified them. Please wait comfortably.
               </p>
             </div>
           ) : (
@@ -583,7 +587,7 @@ export default function GrandmaGazePage() {
                   onClick={resetToMain}
                   className="rounded-full bg-slate-700 px-12 py-6 text-2xl font-bold text-slate-200"
                 >
-                  もどる
+                  Back
                 </button>
               )}
             >
@@ -602,7 +606,7 @@ export default function GrandmaGazePage() {
             errorMessage={combinedError}
             onRestartCamera={() => {
               setCameraError(null);
-              setStatusMessage("カメラを準備しています...");
+              setStatusMessage("Preparing camera…");
               if (gazeMode) {
                 setIrisRestartKey((k) => k + 1);
               } else {

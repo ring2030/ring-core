@@ -1,5 +1,5 @@
 /**
- * seeso の InitializationErrorType に対応するユーザー向け文言（SDK 内部コードと数値は固定）
+ * User-facing messages for seeso InitializationErrorType (SDK internal codes are fixed).
  * @see node_modules/seeso/dist/seeso.js → error-type.js
  */
 export function describeEyedidInitError(code: number): string {
@@ -8,42 +8,42 @@ export function describeEyedidInitError(code: number): string {
       return "";
     case 1:
       return [
-        "Eyedid の WASM 初期化に失敗しました（開発者ライセンス自体は問題ないことが多いです）。",
-        "次を試してください：① 開発サーバーを一度止めて `npm run dev` で再起動し、強制再読み込み（Ctrl+Shift+R）。",
-        "② 広告ブロック・追跡防止をオフにする。③ 別ブラウザ（Chrome 最新）で開く。",
-        "④ F12 → Network で `cdn.seeso.io` がブロックされていないか確認。",
-      ].join("");
+        "Eyedid WASM failed to initialize (the dev license itself is often fine).",
+        "Try: ① stop the dev server and run `npm run dev`, then hard-reload (Ctrl+Shift+R).",
+        "② disable ad blockers / tracking protection. ③ try another browser (latest Chrome).",
+        "④ in DevTools → Network, check that `cdn.seeso.io` is not blocked.",
+      ].join(" ");
     case 2:
-      return "カメラ権限が Eyedid SDK 側で拒否されました。ブラウザでカメラを許可してから再度お試しください。";
+      return "Camera permission was denied by the Eyedid SDK. Allow the camera in the browser, then try again.";
     case 3:
-      return "ライセンスキーが無効です。Eyedid コンソールのキーをコピーし直し、.env.local の NEXT_PUBLIC_EYEDID_LICENSE_KEY を確認してください。";
+      return "Invalid license key. Copy the key from the Eyedid console and check NEXT_PUBLIC_EYEDID_LICENSE_KEY in .env.local.";
     case 4:
-      return "開発用ライセンスを本番環境で使っています。localhost では「開発用」キー、本番 URL では「本番用」キーをそれぞれ発行してください。";
+      return "You are using a development license in production. Use a dev key on localhost and a production key on your live URL.";
     case 5:
-      return "本番用ライセンスを開発環境（localhost 等）で使っています。Eyedid コンソールで「開発用」キーを発行し、.env.local に設定してください。";
+      return "You are using a production license on localhost. Issue a development key in the Eyedid console and set it in .env.local.";
     case 6:
-      return "パッケージ名がライセンスと一致しません（主にモバイルアプリ向け）。Web ではキー種別の違いが多いです。";
+      return "Package name does not match the license (common for mobile apps). On the web, key type mismatch is a frequent cause.";
     case 7:
-      return "アプリ署名がライセンスと一致しません（モバイル向け）。";
+      return "App signature does not match the license (mobile).";
     case 8:
-      return "無料枠の利用上限に達しています。Eyedid コンソールでプランを確認してください。";
+      return "Free tier limit reached. Check your plan in the Eyedid console.";
     case 9:
-      return "ライセンスが無効化されています。コンソールでキーの状態を確認してください。";
+      return "License has been disabled. Check key status in the console.";
     case 10:
-      return "認証に失敗しました（IP 制限や通信の暗号化など）。ネットワーク・VPN・時刻を確認してください。";
+      return "Authentication failed (IP restrictions, encryption, etc.). Check network, VPN, and system time.";
     case 11:
-      return "認証で不明なエラーが発生しました。しばらくしてから再度お試しください。";
+      return "Unknown authentication error. Wait a moment and try again.";
     case 12:
-      return "Eyedid サーバー側エラー（タイムアウト等）です。しばらくしてから再度お試しください。";
+      return "Eyedid server error (timeout, etc.). Try again shortly.";
     case 13:
-      return "Eyedid サーバーに接続できません。インターネット接続とファイアウォールを確認してください。";
+      return "Cannot reach Eyedid servers. Check internet and firewall settings.";
     case 14:
-      return "パソコンの時刻が大きくずれています。OS の「日付と時刻」を自動で合わせてから再度お試しください。";
+      return "System clock is far off. Enable automatic date & time, then try again.";
     case 15:
-      return "ライセンスキーの形式が正しくありません。コピー漏れ・余分な空白がないか .env.local を確認してください。";
+      return "License key format is invalid. Check .env.local for copy/paste errors or extra spaces.";
     case 16:
-      return "ライセンスの有効期限が切れています。Eyedid コンソールで更新してください。";
+      return "License has expired. Renew it in the Eyedid console.";
     default:
-      return `Eyedid の初期化に失敗しました（コード: ${code}）。ライセンス種別・ネットワーク・時刻を確認してください。`;
+      return `Eyedid initialization failed (code: ${code}). Check license type, network, and clock.`;
   }
 }

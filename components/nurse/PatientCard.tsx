@@ -3,6 +3,7 @@
 import { AlertTriangle, Clock, MessageCircle } from "lucide-react";
 import { StatusBadge } from "@/components/ui/ThemePrimitives";
 import { getPriorityBadge } from "@/lib/dashboard/priorityBadge";
+import { emojiForReason } from "@/lib/calls/reasons";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -38,15 +39,8 @@ const P_CFG = {
   1: { bar: "bg-stone-200" },
 } as const;
 
-const REASON_EMOJI: Record<string, string> = {
-  "トイレ": "🚽", "お話": "💬", "痛い": "🚨", "寂しい": "🤝",
-  "水": "💧", "お水": "💧", "水が欲しい": "💧",
-  "薬": "💊", "薬が欲しい": "💊", "胸が痛い": "🚨",
-  "転んだ": "⚠️", "眠れない": "🌙", "不安": "🫂", "助けて": "🚨",
-};
-
 function toHHMM(d: Date): string {
-  return d.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
 // ─── コンポーネント ───────────────────────────────────────────────────────────
@@ -77,18 +71,18 @@ export default function PatientCard({ patient }: { patient: PatientCardData }) {
           <div>
             <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
               <span className="rounded-lg bg-stone-100 px-2.5 py-0.5 text-xs font-black text-stone-500">
-                {room}号室
+                Rm {room}
               </span>
               {isUrgent && (
                 <span className="flex items-center gap-1 rounded-lg bg-red-100 px-2.5 py-0.5 text-xs font-black text-red-600">
-                  <AlertTriangle className="h-3 w-3" /> 緊急
+                  <AlertTriangle className="h-3 w-3" /> Urgent
                 </span>
               )}
             </div>
             <h3 className="text-xl font-black text-stone-800 group-hover:text-rose-700 transition-colors">
-              {name}さん
+              {name}
             </h3>
-            <p className="mt-0.5 text-[11px] text-stone-400">{age}歳 · {condition}</p>
+            <p className="mt-0.5 text-[11px] text-stone-400">{age} yrs · {condition}</p>
           </div>
           <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-black transition-transform group-hover:scale-110
             ${isUrgent ? "bg-red-100 text-red-700" : "bg-rose-50 text-rose-400"}`}>
@@ -111,7 +105,7 @@ export default function PatientCard({ patient }: { patient: PatientCardData }) {
               )}
             </div>
             <p className="font-bold text-stone-700 text-sm">
-              {REASON_EMOJI[latest.reason] ?? "📋"} {latest.reason}
+              {emojiForReason(latest.reason)} {latest.reason}
             </p>
             {latest.summary && (
               <p className="mt-1.5 flex items-start gap-1 text-[11px] text-stone-400">
@@ -122,21 +116,21 @@ export default function PatientCard({ patient }: { patient: PatientCardData }) {
           </div>
         ) : (
           <div className="rounded-2xl border border-stone-100 bg-stone-50 p-3 text-center transition-colors group-hover:border-rose-100">
-            <p className="text-xs font-bold text-stone-300">本日の呼び出しなし</p>
+            <p className="text-xs font-bold text-stone-300">No calls today</p>
           </div>
         )}
 
         {/* 本日件数 */}
         <div className="mt-3 flex items-center justify-between">
           <p className="text-[10px] font-bold text-stone-400">
-            本日 {todayCalls.length} 件
+            Today: {todayCalls.length}
           </p>
           <div className="flex gap-1">
             {[...new Set(todayCalls.map((c) => c.reason))]
               .slice(0, 4)
               .map((r, i) => (
                 <span key={i} className="text-base transition-transform hover:scale-125">
-                  {REASON_EMOJI[r] ?? "📋"}
+                  {emojiForReason(r)}
                 </span>
               ))}
           </div>

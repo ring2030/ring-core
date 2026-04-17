@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vitest";
+import { REASON_CHAT, REASON_RESTROOM } from "@/lib/calls/reasons";
 import {
   computeNextProgress,
   INITIAL_TARGET_STABILITY,
   selectGazeTarget,
   stepTargetStability,
+  type TargetStabilityState,
 } from "./selection";
 
 describe("selectGazeTarget", () => {
   it("returns left target when gaze is in left active area", () => {
     const target = selectGazeTarget({ x: 120, y: 500, width: 1200, height: 800 });
-    expect(target).toBe("トイレ");
+    expect(target).toBe(REASON_RESTROOM);
   });
 
   it("returns right target when gaze is in right active area", () => {
     const target = selectGazeTarget({ x: 1100, y: 500, width: 1200, height: 800 });
-    expect(target).toBe("お話");
+    expect(target).toBe(REASON_CHAT);
   });
 
   it("returns null in center dead zone", () => {
@@ -31,7 +33,7 @@ describe("selectGazeTarget", () => {
       leftThresholdRatio: 0.55,
       rightThresholdRatio: 0.75,
     });
-    expect(target).toBe("トイレ");
+    expect(target).toBe(REASON_RESTROOM);
   });
 
   it("returns null in the top inactive strip (y <= 10% height)", () => {
@@ -69,18 +71,21 @@ describe("computeNextProgress", () => {
 describe("stepTargetStability", () => {
   it("locks target only after consecutive hits", () => {
     let s = INITIAL_TARGET_STABILITY;
-    s = stepTargetStability(s, "トイレ", { confirmFrames: 3 });
+    s = stepTargetStability(s, REASON_RESTROOM, { confirmFrames: 3 });
     expect(s.locked).toBeNull();
-    s = stepTargetStability(s, "トイレ", { confirmFrames: 3 });
+    s = stepTargetStability(s, REASON_RESTROOM, { confirmFrames: 3 });
     expect(s.locked).toBeNull();
-    s = stepTargetStability(s, "トイレ", { confirmFrames: 3 });
-    expect(s.locked).toBe("トイレ");
+    s = stepTargetStability(s, REASON_RESTROOM, { confirmFrames: 3 });
+    expect(s.locked).toBe(REASON_RESTROOM);
   });
 
   it("does not unlock immediately when one frame is lost", () => {
-    let s = { ...INITIAL_TARGET_STABILITY, locked: "お話" as const };
+    let s: TargetStabilityState = {
+      ...INITIAL_TARGET_STABILITY,
+      locked: REASON_CHAT,
+    };
     s = stepTargetStability(s, null, { releaseFrames: 2 });
-    expect(s.locked).toBe("お話");
+    expect(s.locked).toBe(REASON_CHAT);
     s = stepTargetStability(s, null, { releaseFrames: 2 });
     expect(s.locked).toBeNull();
   });

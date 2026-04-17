@@ -1,4 +1,6 @@
-export type GazeTarget = "トイレ" | "お話" | null;
+import { REASON_CHAT, REASON_RESTROOM } from "@/lib/calls/reasons";
+
+export type GazeTarget = typeof REASON_RESTROOM | typeof REASON_CHAT | null;
 
 type SelectParams = {
   x: number;
@@ -30,8 +32,8 @@ export function selectGazeTarget({
   const leftThreshold = width * leftThresholdRatio;
   const rightThreshold = width * rightThresholdRatio;
 
-  if (x < leftThreshold) return "トイレ";
-  if (x > rightThreshold) return "お話";
+  if (x < leftThreshold) return REASON_RESTROOM;
+  if (x > rightThreshold) return REASON_CHAT;
   return null;
 }
 

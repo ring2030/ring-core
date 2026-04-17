@@ -13,13 +13,13 @@ export function SleepOverlay({ onWakeUp }: Props) {
     >
       <span className="text-[7rem] animate-pulse select-none">💤</span>
       <p className="text-slate-400 text-3xl font-bold select-none tracking-widest">
-        省電力モード
+        Power saving
       </p>
       <button
         type="button"
-        className="mt-2 px-16 py-6 bg-slate-700 hover:bg-slate-600 active:scale-95 text-white text-[2rem] font-bold rounded-full shadow-2xl border-2 border-slate-500 transition-all select-none"
+        className="mt-2 px-16 py-6 bg-slate-700 hover:bg-slate-600 active:scale-95 text-white text-2xl font-bold rounded-full shadow-2xl border-2 border-slate-500 transition-all select-none sm:text-[2rem]"
       >
-        タッチして再開
+        Tap to wake
       </button>
     </div>
   );

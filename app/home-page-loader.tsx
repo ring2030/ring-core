@@ -15,16 +15,16 @@ function BootScreen() {
         className="h-12 w-12 animate-spin rounded-full border-4 border-amber-400/25 border-t-amber-400"
         aria-hidden
       />
-      <p className="mt-6 text-lg font-medium tracking-wide">読み込み中…</p>
+      <p className="mt-6 text-lg font-medium tracking-wide">Loading…</p>
       <p className="mt-2 max-w-sm text-sm text-slate-500">
-        カメラと視線の準備には数秒かかることがあります
+        Camera and gaze setup may take a few seconds
       </p>
     </div>
   );
 }
 
 /**
- * クライアントでマウントするまでメインを描画しない（dynamic ssr:false のサーバー空描画と区別）。
+ * Avoid rendering the main bundle until the client has mounted (distinct from SSR empty shell for dynamic ssr:false).
  */
 export function HomePageClient() {
   const [clientReady, setClientReady] = useState(false);
@@ -45,7 +45,7 @@ export function HomePageClient() {
           role="alert"
           className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-slate-950 px-6 text-center text-red-200"
         >
-          <p className="text-lg font-bold">画面を表示できませんでした</p>
+          <p className="text-lg font-bold">Couldn&apos;t show the screen</p>
           <p className="max-w-lg text-sm opacity-90">{err.message}</p>
         </div>
       )}

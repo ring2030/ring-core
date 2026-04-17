@@ -34,13 +34,13 @@ export function ConversationView({ aiText, isListening, isThinking, onEnd }: Pro
           {phase === "listen" && (
             <>
               <Mic className="size-5 shrink-0 text-rose-300" strokeWidth={2} aria-hidden />
-              お話を聞いています
+              Listening
             </>
           )}
           {phase === "think" && (
             <>
               <Sparkles className="size-5 shrink-0 text-sky-300" strokeWidth={2} aria-hidden />
-              考えています
+              Thinking
             </>
           )}
         </div>
@@ -74,7 +74,7 @@ export function ConversationView({ aiText, isListening, isThinking, onEnd }: Pro
           onClick={onEnd}
           className="min-h-[56px] rounded-full bg-slate-700 px-14 py-4 text-2xl font-bold text-slate-100 shadow-lg transition hover:bg-slate-600 active:scale-[0.98]"
         >
-          おわる
+          End
         </button>
       </div>
     </div>

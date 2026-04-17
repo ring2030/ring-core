@@ -4,28 +4,30 @@ export interface HistoryCall {
 }
 
 export function dateLabel(date: Date): string {
-  const weekday = ["日", "月", "火", "水", "木", "金", "土"][date.getDay()];
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日（${weekday}）`;
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getDay()];
+  return `${date.getFullYear()}/${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")} (${weekday})`;
 }
 
 export function buildHighlight(calls: HistoryCall[], dateStr: string): string {
-  if (calls.length === 0) return `${dateStr}は記録がありませんでした。穏やかな一日だったようです。`;
+  if (calls.length === 0) {
+    return `${dateStr} has no logged calls. Sounds like a calm day.`;
+  }
 
   const aiCount = calls.filter((c) => c.priority <= 2).length;
   const nurseCount = calls.filter((c) => c.priority >= 3).length;
   const urgentCount = calls.filter((c) => c.priority >= 4).length;
 
-  const reasons = [...new Set(calls.map((c) => c.reason))].slice(0, 3).join("・");
+  const reasons = [...new Set(calls.map((c) => c.reason))].slice(0, 3).join(", ");
   const total = calls.length;
 
-  let msg = `この日は ${total} 回、きよ子さんからお声がけがありました（${reasons} など）。`;
+  let msg = `That day, Kiyoko reached out ${total} time(s) (${reasons}${reasons ? ", " : ""}etc.).`;
 
   if (aiCount > 0 && nurseCount === 0) {
-    msg += " すべてのご要望にAIがお答えし、きよ子さんは穏やかに過ごされていました。🌸";
+    msg += " AI handled everything; she seemed comfortable. 🌸";
   } else if (urgentCount > 0) {
-    msg += " うち " + urgentCount + " 件は急ぎの対応が必要で、みっちゃんがすぐに駆けつけました。安心してお任せください。";
+    msg += ` ${urgentCount} needed urgent help — staff responded right away.`;
   } else {
-    msg += ` AIが ${aiCount} 件のお話を聞き、みっちゃんが ${nurseCount} 件の介助をしました。しっかり見守っています。`;
+    msg += ` AI listened on ${aiCount} call(s); staff assisted on ${nurseCount}. She’s being watched over.`;
   }
 
   return msg;

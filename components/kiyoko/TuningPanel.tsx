@@ -11,7 +11,7 @@ type Props = {
   gazeTuning: GazeTuning;
   onTuningChange: (tuning: GazeTuning) => void;
   onClose: () => void;
-  /** 設定ページなどに埋め込むとき true（オーバーレイ用の固定位置を外す） */
+  /** When true, embed in settings (no fixed overlay positioning). */
   embedded?: boolean;
 };
 
@@ -22,8 +22,10 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
 
   return (
     <div className={box}>
-      <p className="mb-3 font-bold text-slate-900">
-        誤反応を減らす調整（自動保存）
+      <p
+        className={`mb-3 font-bold ${embedded ? "text-slate-900" : "text-slate-100"}`}
+      >
+        Reduce false triggers (auto-saved)
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
         {TUNING_PRESETS.map((p) => (
@@ -43,7 +45,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
       </div>
       <div className="space-y-3">
         <label className={`block ${embedded ? "text-slate-700" : ""}`}>
-          <span>左判定の広さ: {(gazeTuning.leftThresholdRatio * 100).toFixed(0)}%</span>
+          <span>Left zone width: {(gazeTuning.leftThresholdRatio * 100).toFixed(0)}%</span>
           <input
             type="range"
             min={20}
@@ -58,7 +60,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
           />
         </label>
         <label className={`block ${embedded ? "text-slate-700" : ""}`}>
-          <span>右判定の広さ: {(gazeTuning.rightThresholdRatio * 100).toFixed(0)}%</span>
+          <span>Right zone width: {(gazeTuning.rightThresholdRatio * 100).toFixed(0)}%</span>
           <input
             type="range"
             min={51}
@@ -73,7 +75,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
           />
         </label>
         <label className={`block ${embedded ? "text-slate-700" : ""}`}>
-          <span>確定までの連続フレーム: {gazeTuning.confirmFrames}</span>
+          <span>Frames to confirm: {gazeTuning.confirmFrames}</span>
           <input
             type="range"
             min={2}
@@ -86,7 +88,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
           />
         </label>
         <label className={`block ${embedded ? "text-slate-700" : ""}`}>
-          <span>見失いで解除するフレーム: {gazeTuning.releaseFrames}</span>
+          <span>Frames to release when lost: {gazeTuning.releaseFrames}</span>
           <input
             type="range"
             min={1}
@@ -99,7 +101,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
           />
         </label>
         <label className={`block ${embedded ? "text-slate-700" : ""}`}>
-          <span>ゲージ上昇速度: +{gazeTuning.risePerTick}</span>
+          <span>Gauge rise per tick: +{gazeTuning.risePerTick}</span>
           <input
             type="range"
             min={1}
@@ -124,7 +126,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
               : "rounded-full border border-slate-600 px-3 py-1"
           }
         >
-          既定値に戻す
+          Reset to defaults
         </button>
         {!embedded && (
           <button
@@ -132,7 +134,7 @@ export function TuningPanel({ gazeTuning, onTuningChange, onClose, embedded }: P
             onClick={onClose}
             className="rounded-full bg-cyan-700 px-3 py-1 text-cyan-50"
           >
-            閉じる
+            Close
           </button>
         )}
       </div>

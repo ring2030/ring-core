@@ -1,7 +1,8 @@
 import type { DocumentData, Timestamp } from "firebase/firestore";
 import { serverTimestamp } from "firebase/firestore";
+import { normalizeReasonList } from "@/lib/calls/reasons";
 
-export type CallReason = "トイレ" | "お話" | string;
+export type CallReason = string;
 export type SenderRole = "patient" | "family" | "nurse" | "system";
 
 export type CallRecord = {
@@ -52,7 +53,7 @@ function toTimestampDate(value: unknown): Date | null {
 export function buildCallWritePayload(input: BuildPayloadInput): Record<string, unknown> {
   const reasons = input.reasons.filter(Boolean);
   const note = input.note ?? "";
-  const senderName = input.senderName ?? "患者";
+  const senderName = input.senderName ?? "Patient";
   const senderRole = input.senderRole ?? "patient";
   const priority = input.priority ?? 1;
   const aiSummary = input.aiSummary ?? "";
@@ -78,10 +79,20 @@ export function buildCallWritePayload(input: BuildPayloadInput): Record<string, 
   };
 }
 
+function normalizeSenderDisplay(name: string): string {
+  if (name === "不明" || name === "") return "Unknown";
+  if (name === "患者") return "Patient";
+  return name;
+}
+
 export function normalizeCallDoc(id: string, raw: DocumentData): CallRecord {
-  const reasons = parseReasons(raw.reasonCodes ?? raw.理由);
+  const rawReasons = parseReasons(raw.reasonCodes ?? raw.理由);
+  const reasons =
+    rawReasons.length > 0 ? normalizeReasonList(rawReasons) : ["Unknown"];
   const note = String(raw.note ?? raw.特記事項 ?? "");
-  const senderName = String(raw.senderName ?? raw.送信者 ?? "不明");
+  const senderName = normalizeSenderDisplay(
+    String(raw.senderName ?? raw.送信者 ?? "Unknown"),
+  );
   const senderRole = String(raw.senderRole ?? "patient") as SenderRole;
   const createdAt =
     toTimestampDate(raw.createdAt) ??
@@ -94,7 +105,7 @@ export function normalizeCallDoc(id: string, raw: DocumentData): CallRecord {
 
   return {
     id,
-    reasons: reasons.length > 0 ? reasons : ["不明"],
+    reasons,
     note,
     senderName,
     senderRole,

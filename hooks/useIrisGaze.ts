@@ -194,7 +194,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
       try {
         // ── Step 1: TF.js WebGL バックエンド初期化 ──
-        setInitStatus("TF.js WebGL 初期化中…");
+        setInitStatus("Initializing TF.js WebGL…");
         const tf = await import("@tensorflow/tfjs-core");
         await import("@tensorflow/tfjs-backend-webgl");
         try {
@@ -207,7 +207,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         if (localCancel || cancelledRef.current) return;
 
         // ── Step 2: 顔検出モデルをロード ──
-        setInitStatus("顔検出モデル読み込み中… (初回のみ時間がかかります)");
+        setInitStatus("Loading face model… (first load may take a while)");
         const faceDetection = await import("@tensorflow-models/face-detection");
         const detector = await faceDetection.createDetector(
           faceDetection.SupportedModels.MediaPipeFaceDetector,
@@ -222,7 +222,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           return;
         }
         detectorRef.current = detector;
-        setInitStatus("モデル準備完了。カメラ起動中…");
+        setInitStatus("Model ready. Starting camera…");
 
         // ── Step 3: カメラ一覧を取得してから開く ──
         // 一度 permissions を取得しないとラベルが空になるため、先に getUserMedia する
@@ -236,7 +236,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           const devices = await navigator.mediaDevices.enumerateDevices();
           const videoDevices = devices
             .filter((d) => d.kind === "videoinput")
-            .map((d) => ({ deviceId: d.deviceId, label: d.label || `カメラ ${d.deviceId.slice(0, 8)}` }));
+            .map((d) => ({ deviceId: d.deviceId, label: d.label || `Camera ${d.deviceId.slice(0, 8)}` }));
           setCameras(videoDevices);
         } catch { /* ignore */ }
         if (localCancel || cancelledRef.current) {
@@ -263,7 +263,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           if (!localCancel && !cancelledRef.current) {
             setState((s) => ({
               ...s,
-              error: "ビデオ要素が未準備です。ページを再読み込みしてください。",
+              error: "Video element not ready. Reload the page.",
               isReady: false,
             }));
           }
@@ -420,7 +420,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
               // エラーを飲み込まずに state に反映（何が起きているか可視化）
               const msg = e instanceof Error ? e.message : String(e);
               console.error("[useIrisGaze] estimateFaces error:", msg);
-              setState((s) => ({ ...s, error: `検出エラー: ${msg.slice(0, 120)}` }));
+              setState((s) => ({ ...s, error: `Detection error: ${msg.slice(0, 120)}` }));
             })
             .finally(() => { sendingRef.current = false; });
         };
@@ -428,7 +428,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         runLoop();
 
       } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : "初期化に失敗しました";
+        const msg = e instanceof Error ? e.message : "Initialization failed";
         console.error("[useIrisGaze] boot error:", msg);
         if (!localCancel && !cancelledRef.current) {
           setState((s) => ({ ...s, error: msg, isReady: false, faceDetected: false }));

@@ -12,7 +12,7 @@ async function requireNurseAuth() {
   const sessionToken = cookieStore.get(getSessionCookieName())?.value;
   const session = sessionToken ? verifySessionToken(sessionToken) : null;
   if (!session || session.role !== "nurse") {
-    throw new Error("看護師ログインが必要です。");
+    throw new Error("Staff sign-in required.");
   }
   return session;
 }
@@ -23,7 +23,7 @@ export async function GET() {
     const accounts = await listNurseAccounts();
     return NextResponse.json({ ok: true, accounts });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "取得に失敗しました。";
+    const message = error instanceof Error ? error.message : "Could not load accounts.";
     return NextResponse.json({ ok: false, error: message }, { status: 401 });
   }
 }
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const created = await createNurseAccount(id, password);
     return NextResponse.json({ ok: true, account: created });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "作成に失敗しました。";
+    const message = error instanceof Error ? error.message : "Could not create account.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }
@@ -59,11 +59,11 @@ export async function PATCH(req: Request) {
     const body = (await req.json()) as PatchBody;
     const id = String(body.id ?? "").trim();
     if (!id) {
-      return NextResponse.json({ ok: false, error: "IDは必須です。" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "ID is required." }, { status: 400 });
     }
     if (session.nurseId === id && body.disabled === true) {
       return NextResponse.json(
-        { ok: false, error: "ログイン中の自分を無効化できません。" },
+        { ok: false, error: "You cannot disable your own account while signed in." },
         { status: 400 },
       );
     }
@@ -74,7 +74,7 @@ export async function PATCH(req: Request) {
     });
     return NextResponse.json({ ok: true, account: updated });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "更新に失敗しました。";
+    const message = error instanceof Error ? error.message : "Update failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

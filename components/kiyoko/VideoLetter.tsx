@@ -9,7 +9,7 @@ type VideoLetterProps = {
 };
 
 /**
- * フルスクリーンで動画を再生。再生終了時 or × 押下で閉じる。
+ * Full-screen video; closes on end or ×.
  */
 export function VideoLetter({ isActive, onClose, videoSrc }: VideoLetterProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -38,7 +38,7 @@ export function VideoLetter({ isActive, onClose, videoSrc }: VideoLetterProps) {
         type="button"
         onClick={onClose}
         className="absolute right-6 top-6 cursor-pointer text-5xl text-white transition hover:scale-110"
-        aria-label="閉じる"
+        aria-label="Close"
       >
         &times;
       </button>

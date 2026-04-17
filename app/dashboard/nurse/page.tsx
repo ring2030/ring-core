@@ -25,8 +25,9 @@ import {
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { getFirebaseAuth, getFirestoreDb } from "@/lib/firebase";
 import { normalizeCallDoc } from "@/lib/calls/schema";
+import { emojiForReason } from "@/lib/calls/reasons";
 
-// ─── 患者マスタ ───────────────────────────────────────────────────────────────
+// ─── Patient roster (demo) ───────────────────────────────────────────────────
 
 interface Patient {
   id: string;
@@ -38,29 +39,29 @@ interface Patient {
 }
 
 const PATIENTS: Patient[] = [
-  { id: "kiyoko", name: "アライキヨコ",  room: "101", age: 82, condition: "アルツハイマー型認知症", senderNames: ["きよ子","アライキヨコ"] },
-  { id: "tome",   name: "ムラセタロウ",  room: "102", age: 78, condition: "レビー小体型認知症",    senderNames: ["ムラセタロウ","トメ","とめ"] },
-  { id: "hanako", name: "ミヤキタジロウ", room: "103", age: 85, condition: "血管性認知症",          senderNames: ["ミヤキタジロウ","花子","はなこ"] },
+  { id: "kiyoko", name: "Kiyoko Arai", room: "101", age: 82, condition: "Alzheimer’s disease", senderNames: ["Kiyoko", "きよ子", "アライキヨコ"] },
+  { id: "tome", name: "Taro Murase", room: "102", age: 78, condition: "Lewy body dementia", senderNames: ["Taro", "ムラセタロウ", "トメ", "とめ"] },
+  { id: "hanako", name: "Hanako Miyakita", room: "103", age: 85, condition: "Vascular dementia", senderNames: ["Hanako", "ミヤキタジロウ", "花子", "はなこ"] },
 ];
 
-// ─── 分析モックデータ ─────────────────────────────────────────────────────────
+// ─── Mock analytics (demo) ───────────────────────────────────────────────────
 
 const DETAIL_REASON_DATA = [
-  { name: "排泄の介助",         value: 28, color: "#f97316", emoji: "🚽" },
-  { name: "傾聴・お話し相手",   value: 22, color: "#60a5fa", emoji: "💬" },
-  { name: "不安・孤独感の緩和", value: 18, color: "#a78bfa", emoji: "🤝" },
-  { name: "水分・食事サポート", value: 12, color: "#34d399", emoji: "💧" },
-  { name: "痛み・体調管理",     value:  8, color: "#f87171", emoji: "🚨" },
-  { name: "その他",             value:  6, color: "#94a3b8", emoji: "📋" },
+  { name: "Toileting assistance", value: 28, color: "#f97316", emoji: "🚽" },
+  { name: "Listening / conversation", value: 22, color: "#60a5fa", emoji: "💬" },
+  { name: "Easing anxiety / loneliness", value: 18, color: "#a78bfa", emoji: "🤝" },
+  { name: "Hydration / meal support", value: 12, color: "#34d399", emoji: "💧" },
+  { name: "Pain / condition care", value: 8, color: "#f87171", emoji: "🚨" },
+  { name: "Other", value: 6, color: "#94a3b8", emoji: "📋" },
 ];
 
 const MONTHLY_COMPARISON = [
-  { month: "4月", 緊急対応: 45, AIの傾聴で安心:  0 },
-  { month: "5月", 緊急対応: 48, AIの傾聴で安心:  0 },
-  { month: "6月", 緊急対応: 31, AIの傾聴で安心: 17 },
-  { month: "7月", 緊急対応: 19, AIの傾聴で安心: 36 },
-  { month: "8月", 緊急対応: 17, AIの傾聴で安心: 38 },
-  { month: "9月", 緊急対応: 14, AIの傾聴で安心: 40 },
+  { month: "Apr", urgent: 45, aiComfort: 0 },
+  { month: "May", urgent: 48, aiComfort: 0 },
+  { month: "Jun", urgent: 31, aiComfort: 17 },
+  { month: "Jul", urgent: 19, aiComfort: 36 },
+  { month: "Aug", urgent: 17, aiComfort: 38 },
+  { month: "Sep", urgent: 14, aiComfort: 40 },
 ];
 
 const KPI = { aiResolvedRate: 74, reducedVisits: 31, savedMinutes: 155 } as const;
@@ -73,17 +74,9 @@ function isToday(d: Date): boolean {
 }
 
 function reasonStr(raw: unknown): string {
-  if (Array.isArray(raw)) return raw[0] ?? "不明";
-  return String(raw ?? "不明");
+  if (Array.isArray(raw)) return raw[0] ?? "Unknown";
+  return String(raw ?? "Unknown");
 }
-
-const REASON_EMOJI: Record<string, string> = {
-  "トイレ": "🚽", "お話": "💬", "痛い": "🚨", "寂しい": "🤝",
-  "水が欲しい": "💧", "薬が欲しい": "💊", "胸が痛い": "🚨", "転んだ": "⚠️",
-  "眠れない": "🌙", "不安": "🫂", "助けて": "🚨", "トイレ（急ぎ）": "🚽",
-  "気分が悪い": "😔", "めまいがする": "💫", "お腹が空いた": "🍚",
-  "寒い": "🥶", "体位を変えて": "🛏️",
-};
 
 type AudioWindow = Window & {
   webkitAudioContext?: typeof AudioContext;
@@ -103,7 +96,7 @@ export default function NurseDashboard() {
   const [toasts,         setToasts]         = useState<Toast[]>([]);
   const [alertDismissed, setAlertDismissed] = useState(false);
   const [inviteRole, setInviteRole] = useState<"family" | "patient">("family");
-  const [invitePatientName, setInvitePatientName] = useState("きよ子");
+  const [invitePatientName, setInvitePatientName] = useState("Kiyoko");
   const [inviteMinutes, setInviteMinutes] = useState(180);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
@@ -119,7 +112,7 @@ export default function NurseDashboard() {
       return {
         auth: null,
         db: null,
-        initError: e instanceof Error ? e.message : "Firebase 初期化に失敗しました。",
+        initError: e instanceof Error ? e.message : "Firebase failed to initialize.",
       };
     }
   }, []);
@@ -180,7 +173,7 @@ export default function NurseDashboard() {
           const data     = c.doc.data();
           const priority = data.緊急度 ?? 1;
           const reason   = reasonStr(data.理由);
-          const sender   = data.送信者 ?? "患者";
+          const sender   = data.送信者 ?? "Patient";
 
           playChime(priority >= 4);
 
@@ -200,7 +193,6 @@ export default function NurseDashboard() {
           return {
             id: normalized.id,
             reason: reasonStr(normalized.reasons),
-            notes: normalized.note,
             summary: normalized.aiSummary,
             priority: normalized.priority,
             sender: normalized.senderName,
@@ -222,17 +214,17 @@ export default function NurseDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           role: inviteRole,
-          patientName: invitePatientName.trim() || "きよ子",
+          patientName: invitePatientName.trim() || "Kiyoko",
           expiresInMinutes: inviteMinutes,
         }),
       });
       const data = (await res.json()) as { ok: boolean; error?: string; path?: string };
       if (!res.ok || !data.ok || !data.path) {
-        throw new Error(data.error ?? "招待URLを発行できませんでした。");
+        throw new Error(data.error ?? "Could not create invite link.");
       }
       setInviteLink(`${window.location.origin}${data.path}`);
     } catch (error: unknown) {
-      setInviteError(error instanceof Error ? error.message : "招待URLを発行できませんでした。");
+      setInviteError(error instanceof Error ? error.message : "Could not create invite link.");
     } finally {
       setInviteLoading(false);
     }
@@ -258,10 +250,16 @@ export default function NurseDashboard() {
 
   // ── チャート集計 ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const counts: Record<string, number> = { "トイレ": 0, "お話": 0, "痛い": 0, "寂しい": 0, "その他": 0 };
+    const counts: Record<string, number> = {
+      Restroom: 0,
+      Chat: 0,
+      Pain: 0,
+      Lonely: 0,
+      Other: 0,
+    };
     const hourly = Array.from({ length: 24 }, (_, i) => ({ hour: `${i}`, count: 0 }));
     calls.forEach((c) => {
-      const key = counts[c.reason] !== undefined ? c.reason : "その他";
+      const key = counts[c.reason] !== undefined ? c.reason : "Other";
       counts[key]++;
       hourly[c.date.getHours()].count++;
     });
@@ -277,7 +275,7 @@ export default function NurseDashboard() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50 px-6 text-center">
         <AlertTriangle className="h-10 w-10 text-red-500" />
-        <h1 className="text-xl font-black text-stone-800">ナースステーションを開けませんでした</h1>
+        <h1 className="text-xl font-black text-stone-800">Could not open nurse station</h1>
         <p className="max-w-xl text-sm text-stone-600">{initResult.initError}</p>
       </div>
     );
@@ -286,7 +284,7 @@ export default function NurseDashboard() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-rose-200 border-t-rose-500" />
-        <p className="font-bold text-stone-400">ナースステーションを起動中...</p>
+        <p className="font-bold text-stone-400">Starting nurse station…</p>
       </div>
     );
   }
@@ -318,8 +316,8 @@ export default function NurseDashboard() {
                 ? <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
                 : <Bell className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />}
               <div className="flex-1">
-                <p className="text-sm font-black">{t.patientName}さんから呼び出し</p>
-                <p className="text-xs opacity-75">{REASON_EMOJI[t.reason] ?? "📋"} {t.reason}</p>
+                <p className="text-sm font-black">Call from {t.patientName}</p>
+                <p className="text-xs opacity-75">{emojiForReason(t.reason)} {t.reason}</p>
               </div>
               <button onClick={() => setToasts((p) => p.filter((x) => x.id !== t.id))} className="opacity-40 hover:opacity-80 transition-opacity">
                 <X className="h-4 w-4" />
@@ -333,7 +331,7 @@ export default function NurseDashboard() {
           <div className="flex items-center justify-between bg-red-600 px-6 py-3 text-white shadow-lg fade-in-down">
             <div className="flex animate-pulse items-center gap-3">
               <AlertTriangle className="h-5 w-5 shrink-0" />
-              <p className="font-black tracking-wide">緊急コールが入っています ─ 至急対応してください</p>
+              <p className="font-black tracking-wide">Emergency call — respond now</p>
             </div>
             <button onClick={() => setAlertDismissed(true)} className="rounded-full p-1 hover:bg-red-500 transition-colors">
               <X className="h-5 w-5" />
@@ -346,23 +344,23 @@ export default function NurseDashboard() {
           <div className="flex items-center justify-between border-b border-rose-100 bg-rose-50 px-6 py-2.5">
             <p className="flex items-center gap-2 text-sm font-bold text-rose-600">
               <Volume2 className="h-4 w-4 animate-bounce" />
-              呼び出し音を有効にしてください
+              Enable alert sounds
             </p>
             <button
               onClick={() => { setIsAudioEnabled(true); playChime(false); }}
               className="rounded-full bg-rose-500 px-5 py-1.5 text-xs font-black text-white shadow-md hover:bg-rose-600 active:scale-95 transition-all"
             >
-              音声を有効化
+              Enable sound
             </button>
           </div>
         )}
 
         {/* ── ヘッダー ─────────────────────────────────────────────────────────── */}
         <DashboardHeader
-          title="ケアダッシュボード（看護師）"
+          title="Care dashboard (nurse)"
           subtitle={
             <span className={`inline-flex items-center gap-1.5 text-[11px] font-bold ${isOnline ? "text-emerald-500" : "text-stone-400"}`}>
-              {isOnline ? <><Wifi className="h-3 w-3" /> リアルタイム接続中</> : <><WifiOff className="h-3 w-3" /> オフライン</>}
+              {isOnline ? <><Wifi className="h-3 w-3" /> Live</> : <><WifiOff className="h-3 w-3" /> Offline</>}
             </span>
           }
           leftIcon={
@@ -374,14 +372,14 @@ export default function NurseDashboard() {
             <div className="flex items-center gap-3">
               <SeedDataButton />
               <div className="hidden text-right sm:block">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">担当</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-stone-400">On duty</p>
                 <p className="flex items-center gap-1.5 font-black text-stone-700">
                   <UserCheck className="h-4 w-4 text-cyan-500" />
-                  山田 看護師（リーダー）
+                  Y. Yamada (RN lead)
                 </p>
               </div>
               <div className="flex h-10 w-10 items-center justify-center rounded-full border-2 border-cyan-200 bg-cyan-100 text-sm font-black text-cyan-700 transition-transform hover:scale-110">
-                山
+                YY
               </div>
             </div>
           }
@@ -399,14 +397,14 @@ export default function NurseDashboard() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-black uppercase tracking-wider text-cyan-700">
-                  家族/患者 招待URL発行
+                  Family / patient invite link
                 </h2>
                 <p className="mt-1 text-xs text-cyan-900/80">
-                  都度発行URLで家族画面・患者画面を開けます。
+                  Generate a one-time URL for the family or patient home screen.
                 </p>
               </div>
               <AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-xs">
-                ログアウト
+                Sign out
               </AppButton>
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-4">
@@ -415,14 +413,14 @@ export default function NurseDashboard() {
                 onChange={(e) => setInviteRole(e.target.value as "family" | "patient")}
                 className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
               >
-                <option value="family">家族向け</option>
-                <option value="patient">患者向け</option>
+                <option value="family">Family</option>
+                <option value="patient">Patient</option>
               </select>
               <input
                 value={invitePatientName}
                 onChange={(e) => setInvitePatientName(e.target.value)}
                 className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
-                placeholder="患者名"
+                placeholder="Name"
               />
               <input
                 type="number"
@@ -433,12 +431,12 @@ export default function NurseDashboard() {
                 className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
               />
               <AppButton type="button" onClick={() => void issueInvite()} disabled={inviteLoading}>
-                {inviteLoading ? "発行中..." : "URL発行"}
+                {inviteLoading ? "Creating…" : "Create link"}
               </AppButton>
             </div>
             {inviteLink && (
               <div className="mt-3 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs text-cyan-900">
-                <p className="font-bold">発行URL</p>
+                <p className="font-bold">Invite URL</p>
                 <p className="mt-1 break-all">{inviteLink}</p>
               </div>
             )}
@@ -452,10 +450,10 @@ export default function NurseDashboard() {
           {/* ── サマリーカード ────────────────────────────────────────────────── */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
-              { label: "本日のコール", value: calls.filter((c) => isToday(c.date)).length,                     icon: <Bell className="h-5 w-5 text-rose-400" />,     bg: "bg-rose-50 border-rose-100" },
-              { label: "担当患者",     value: PATIENTS.length,                                                  icon: <BedDouble className="h-5 w-5 text-sky-400" />,  bg: "bg-sky-50 border-sky-100" },
-              { label: "緊急対応中",   value: patientData.filter((p) => p.maxPriority >= 4).length,             icon: <AlertTriangle className="h-5 w-5 text-red-400" />, bg: patientData.some((p) => p.maxPriority >= 4) ? "bg-red-50 border-red-200" : "bg-stone-50 border-stone-100" },
-              { label: "対応済み",     value: calls.filter((c) => isToday(c.date) && c.priority <= 2).length,   icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />, bg: "bg-emerald-50 border-emerald-100" },
+              { label: "Calls today", value: calls.filter((c) => isToday(c.date)).length, icon: <Bell className="h-5 w-5 text-rose-400" />, bg: "bg-rose-50 border-rose-100" },
+              { label: "Residents", value: PATIENTS.length, icon: <BedDouble className="h-5 w-5 text-sky-400" />, bg: "bg-sky-50 border-sky-100" },
+              { label: "Urgent now", value: patientData.filter((p) => p.maxPriority >= 4).length, icon: <AlertTriangle className="h-5 w-5 text-red-400" />, bg: patientData.some((p) => p.maxPriority >= 4) ? "bg-red-50 border-red-200" : "bg-stone-50 border-stone-100" },
+              { label: "Resolved", value: calls.filter((c) => isToday(c.date) && c.priority <= 2).length, icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />, bg: "bg-emerald-50 border-emerald-100" },
             ].map((s, i) => (
               <div key={s.label} className={`flex items-center gap-4 rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 fade-in-up ${s.bg}`}
                 style={{ animationDelay: `${i * 60}ms` }}>
@@ -471,7 +469,7 @@ export default function NurseDashboard() {
           {/* ── 患者カード一覧 ────────────────────────────────────────────────── */}
           <section>
             <h2 className="mb-4 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
-              <BedDouble className="h-4 w-4" /> 患者一覧
+              <BedDouble className="h-4 w-4" /> Residents
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {patientData.map((p, i) => (
@@ -486,10 +484,10 @@ export default function NurseDashboard() {
           <section>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
-                <Sparkles className="h-4 w-4 text-violet-400" /> AI 効果分析ダッシュボード
+                <Sparkles className="h-4 w-4 text-violet-400" /> AI impact (demo data)
               </h2>
               <StatusBadge tone="accent" className="px-3 py-1">
-                実証データ（4〜9月累計）
+                Apr–Sep totals
               </StatusBadge>
             </div>
 
@@ -499,9 +497,9 @@ export default function NurseDashboard() {
               <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-sm transition-all hover:shadow-md">
                 <h3 className="mb-1 flex items-center gap-2 font-black text-stone-700">
                   <Activity className="h-4 w-4 text-rose-400" />
-                  呼び出し理由の詳細分析
+                  Reason breakdown
                 </h3>
-                <p className="mb-5 text-[11px] text-stone-400">AIサマリーをもとに6カテゴリに分類（累計 94 件）</p>
+                <p className="mb-5 text-[11px] text-stone-400">Six categories from AI summaries (94 calls total)</p>
 
                 {/* ResponsiveContainerはminHeight付きdivでラップ（Recharts警告対策） */}
                 <div style={{ width: "100%", minHeight: 192 }}>
@@ -510,7 +508,7 @@ export default function NurseDashboard() {
                       <Pie data={DETAIL_REASON_DATA} innerRadius={52} outerRadius={76} paddingAngle={4} dataKey="value" stroke="none">
                         {DETAIL_REASON_DATA.map((d, i) => <Cell key={i} fill={d.color} />)}
                       </Pie>
-                      <Tooltip formatter={(value) => [`${value} 件`]} contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "12px" }} />
+                      <Tooltip formatter={(value) => [`${value} calls`]} contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "12px" }} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -538,16 +536,16 @@ export default function NurseDashboard() {
                 <div>
                   <h3 className="mb-1 flex items-center gap-2 font-black text-stone-700">
                     <TrendingDown className="h-4 w-4 text-emerald-500" />
-                    AI 導入による削減効果
+                    Impact from AI triage
                   </h3>
-                  <p className="text-[11px] text-stone-400">優先度 1〜2 はAIの傾聴で安心、3〜5 のみ駆けつけ対応</p>
+                  <p className="text-[11px] text-stone-400">Priority 1–2: AI listening; 3–5: in-person</p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { value: `${KPI.aiResolvedRate}%`,     label: "AIの傾聴で\n安心できたコール", bg: "from-violet-50 to-violet-100 border-violet-100", text: "text-violet-700" },
-                    { value: `${KPI.reducedVisits}件`,      label: "削減された\n月間駆けつけ",     bg: "from-emerald-50 to-emerald-100 border-emerald-100", text: "text-emerald-700" },
-                    { value: `${KPI.savedMinutes}分`,       label: "看護師の\n節約時間/月",        bg: "from-sky-50 to-sky-100 border-sky-100", text: "text-sky-700" },
+                    { value: `${KPI.aiResolvedRate}%`, label: "Calls\ncomforted by AI", bg: "from-violet-50 to-violet-100 border-violet-100", text: "text-violet-700" },
+                    { value: `${KPI.reducedVisits}`, label: "Fewer\nvisits/mo", bg: "from-emerald-50 to-emerald-100 border-emerald-100", text: "text-emerald-700" },
+                    { value: `${KPI.savedMinutes}m`, label: "Staff time\nsaved/mo", bg: "from-sky-50 to-sky-100 border-sky-100", text: "text-sky-700" },
                   ].map((k) => (
                     <div key={k.label} className={`rounded-2xl bg-gradient-to-br border p-3 text-center ${k.bg}`}>
                       <p className={`text-xl font-black ${k.text}`}>{k.value}</p>
@@ -557,17 +555,17 @@ export default function NurseDashboard() {
                 </div>
 
                 <div className="flex-1">
-                  <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-stone-400">月別コール対応内訳</p>
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-stone-400">Monthly mix</p>
                   <div style={{ width: "100%", minHeight: 176 }}>
                     <ResponsiveContainer width="99%" height={176}>
                       <BarChart data={MONTHLY_COMPARISON} barGap={2}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
                         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10, fontWeight: "bold" }} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10 }} width={24} />
-                        <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "11px" }} formatter={(v) => [`${v} 件`]} />
+                        <Tooltip contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "11px" }} formatter={(v) => [`${v} calls`]} />
                         <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "10px", fontWeight: "bold", paddingTop: "4px" }} />
-                        <Bar dataKey="緊急対応"       fill="#fda4af" radius={[4,4,0,0]} maxBarSize={20} />
-                        <Bar dataKey="AIの傾聴で安心" fill="#7dd3fc" radius={[4,4,0,0]} maxBarSize={20} />
+                        <Bar dataKey="urgent" fill="#fda4af" radius={[4, 4, 0, 0]} maxBarSize={20} name="Urgent" />
+                        <Bar dataKey="aiComfort" fill="#7dd3fc" radius={[4, 4, 0, 0]} maxBarSize={20} name="AI comfort" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -575,8 +573,7 @@ export default function NurseDashboard() {
 
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
                   <p className="text-[11px] font-bold leading-relaxed text-emerald-700">
-                    💡 月平均 <strong>{KPI.reducedVisits} 件</strong>の駆けつけを削減。
-                    看護師の余力を、本当に必要な患者ケアへ集中できます。
+                    💡 Avg. <strong>{KPI.reducedVisits}</strong> fewer in-person visits per month — more time for hands-on care.
                   </p>
                 </div>
               </div>
@@ -586,7 +583,7 @@ export default function NurseDashboard() {
           {/* ── 時間帯別アクティビティ ────────────────────────────────────────── */}
           <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-sm">
             <h2 className="mb-6 flex items-center gap-2 text-xs font-black uppercase tracking-widest text-stone-400">
-              <Clock className="h-3.5 w-3.5 text-sky-400" /> 時間帯別アクティビティ
+              <Clock className="h-3.5 w-3.5 text-sky-400" /> Calls by hour
             </h2>
             <div style={{ width: "100%", minHeight: 208 }}>
               <ResponsiveContainer width="99%" height={208}>

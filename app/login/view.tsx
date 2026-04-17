@@ -16,6 +16,19 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
   const [inviteToken, setInviteToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [titleTapCount, setTitleTapCount] = useState(0);
+  const [showShoheiEasterEgg, setShowShoheiEasterEgg] = useState(false);
+
+  function onNurseTitleClick() {
+    setTitleTapCount((count) => {
+      const next = count + 1;
+      if (next >= 3) {
+        setShowShoheiEasterEgg((visible) => !visible);
+        return 0;
+      }
+      return next;
+    });
+  }
 
   async function handleNurseLogin(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -29,7 +42,7 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
       });
       const json = (await res.json()) as { ok: boolean; error?: string };
       if (!res.ok || !json.ok) {
-        setError(json.error ?? "ログインに失敗しました。");
+        setError(json.error ?? "Sign-in failed.");
         return;
       }
       router.push(nextPath);
@@ -41,7 +54,7 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
 
   function goWithToken() {
     if (!inviteToken.trim()) {
-      setError("招待トークンを入力してください。");
+      setError("Enter an invite token.");
       return;
     }
     const raw = inviteToken.trim();
@@ -62,11 +75,16 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
     <main className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100">
       <div className="mx-auto grid w-full max-w-4xl gap-6 md:grid-cols-2">
         <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl">
-          <h1 className="text-2xl font-black">看護師ログイン</h1>
-          <p className="mt-2 text-sm text-slate-300">看護師ダッシュボードに入るための画面です。</p>
+          <h1 className="text-2xl font-black select-none" onClick={onNurseTitleClick}>
+            Staff sign-in
+          </h1>
+          <p className="mt-2 text-sm text-slate-300">Sign in to open the care dashboard.</p>
+          {showShoheiEasterEgg && (
+            <p className="mt-2 text-xs tracking-wide text-cyan-300">MVP mode: cheering #17.</p>
+          )}
           <form className="mt-6 space-y-4" onSubmit={handleNurseLogin}>
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-200">ログインID</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-200">Login ID</span>
               <input
                 type="text"
                 value={loginId}
@@ -76,7 +94,7 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
               />
             </label>
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-200">パスワード</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-200">Password</span>
               <input
                 type="password"
                 value={password}
@@ -90,28 +108,28 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
               disabled={pending}
               className="w-full rounded-xl bg-cyan-500 px-4 py-3 font-bold text-slate-950 disabled:opacity-60"
             >
-              {pending ? "ログイン中..." : "看護師として入る"}
+              {pending ? "Signing in…" : "Continue as staff"}
             </button>
           </form>
           <div className="mt-5 text-xs text-slate-400">
-            初期アカウントは ID: <code>1</code> / パスワード: <code>1</code> です。
+            Demo account: ID <code>1</code> / password <code>1</code>.
           </div>
         </section>
 
         <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl">
-          <h2 className="text-2xl font-black">家族・患者 招待URL</h2>
+          <h2 className="text-2xl font-black">Family & patient invite</h2>
           <p className="mt-2 text-sm text-slate-300">
-            受け取った招待URLを開くか、トークンを貼り付けて入室できます。
+            Open an invite link you received, or paste the token below.
           </p>
           <div className="mt-6 space-y-4">
             <label className="block">
-              <span className="mb-2 block text-sm font-semibold text-slate-200">招待トークン</span>
+              <span className="mb-2 block text-sm font-semibold text-slate-200">Invite token</span>
               <textarea
                 value={inviteToken}
                 onChange={(e) => setInviteToken(e.target.value)}
                 rows={4}
                 className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 outline-none ring-cyan-400 focus:ring"
-                placeholder="URL全体または token を貼り付け"
+                placeholder="Full URL or paste token only"
               />
             </label>
             <button
@@ -119,14 +137,14 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
               onClick={goWithToken}
               className="w-full rounded-xl bg-emerald-500 px-4 py-3 font-bold text-slate-950"
             >
-              招待トークンで入る
+              Continue with token
             </button>
           </div>
           <p className="mt-5 text-xs text-slate-400">
-            URLを貼る場合は `token=` 以降だけ残して入力してください。
+            If you paste a URL, you can trim to the part after <code className="text-slate-300">token=</code>.
           </p>
           <Link href="/" className="mt-4 inline-block text-sm text-cyan-300 underline">
-            ホームへ戻る
+            Home
           </Link>
         </section>
       </div>
@@ -135,8 +153,8 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
         <div className="mx-auto mt-6 w-full max-w-4xl rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error ??
             (initialErrorCode === "token_invalid"
-              ? "招待トークンが無効か期限切れです。"
-              : "招待トークンが見つかりません。")}
+              ? "Invite token is invalid or expired."
+              : "Invite token is missing.")}
         </div>
       )}
     </main>

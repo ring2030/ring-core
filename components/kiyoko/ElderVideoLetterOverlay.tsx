@@ -13,13 +13,13 @@ import { getVideoMessagesCollection } from "@/lib/videoMessages";
 import { VideoLetter } from "@/components/kiyoko/VideoLetter";
 
 type ElderVideoLetterOverlayProps = {
-  /** ナースコール送信中・キャリブレーション・スリープ中は再再生ボタンを隠す */
+  /** Hide replay while nurse call, calibration, or sleep UI is active */
   suppressReplayUi?: boolean;
 };
 
 /**
- * 最新1件を購読。家族からの type:video が追加されたらフルスクリーン自動再生。
- * 最新の家族動画 URL を保持し、「家族のビデオを見る」で再再生可能。
+ * Subscribes to the latest messages; auto-plays new family `type:video` in full screen.
+ * Keeps the latest URL for manual replay via the bottom button.
  */
 export function ElderVideoLetterOverlay({
   suppressReplayUi = false,
@@ -85,7 +85,7 @@ export function ElderVideoLetterOverlay({
         }
         setLatestFamilyVideoUrl(latestUrl);
 
-        // 初回はベースラインだけ作って再生しない（過去データスキップ）
+        // First snapshot: baseline only, skip playing historical items
         if (isInitialLoad.current) {
           isInitialLoad.current = false;
           lastSeenTopDocIdRef.current = topDocId;
@@ -96,7 +96,7 @@ export function ElderVideoLetterOverlay({
           return;
         }
 
-        // 2回目以降、トップドキュメントが変わったときだけ「新規到着」とみなす
+        // Later: treat as new only when the top doc id changes
         const isTopChanged =
           topDocId != null && topDocId !== lastSeenTopDocIdRef.current;
         if (!isTopChanged) {
@@ -158,7 +158,7 @@ export function ElderVideoLetterOverlay({
           <span className="mr-2 inline-block" aria-hidden>
             📹
           </span>
-          家族のビデオを見る
+          Family video
         </button>
       )}
       <VideoLetter

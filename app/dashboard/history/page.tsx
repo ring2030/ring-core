@@ -29,6 +29,7 @@ import {
   DashboardPageFrame,
 } from "@/components/dashboard/DashboardChrome";
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
+import { emojiForReason } from "@/lib/calls/reasons";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -42,18 +43,11 @@ interface CallDoc {
 
 // ─── 定数 ────────────────────────────────────────────────────────────────────
 
-const REASON_EMOJI: Record<string, string> = {
-  "トイレ": "🚽", "お話": "💬", "痛い": "🚨", "寂しい": "🤝",
-  "水が欲しい": "💧", "薬が欲しい": "💊", "胸が痛い": "🩺",
-  "転んだ": "⚠️", "眠れない": "🌙", "不安": "🫂", "助けて": "🚨",
-  "トイレ（急ぎ）": "🚽", "気分が悪い": "😔", "めまいがする": "💫",
-};
-
-/** 優先度ごとのカードデザイン（家族向けに優しい表現） */
+/** Card style by priority band */
 const CARD_STYLE = {
-  ai:    { bg: "bg-gradient-to-br from-sky-50 to-indigo-50",   border: "border-sky-200",    dot: "bg-sky-400",    label: "AIがお話を聞きました",       icon: <Bot className="h-4 w-4 text-sky-400" /> },
-  nurse: { bg: "bg-gradient-to-br from-amber-50 to-orange-50", border: "border-amber-200",  dot: "bg-amber-400",  label: "看護師さんが対応しました",   icon: <Stethoscope className="h-4 w-4 text-amber-500" /> },
-  urgent:{ bg: "bg-gradient-to-br from-rose-50 to-pink-50",    border: "border-rose-300",   dot: "bg-rose-500",   label: "看護師さんがすぐに駆けつけました", icon: <Stethoscope className="h-4 w-4 text-rose-500" /> },
+  ai:    { bg: "bg-gradient-to-br from-sky-50 to-indigo-50",   border: "border-sky-200",    dot: "bg-sky-400",    label: "AI companion",       icon: <Bot className="h-4 w-4 text-sky-400" /> },
+  nurse: { bg: "bg-gradient-to-br from-amber-50 to-orange-50", border: "border-amber-200",  dot: "bg-amber-400",  label: "Staff assisted",   icon: <Stethoscope className="h-4 w-4 text-amber-500" /> },
+  urgent:{ bg: "bg-gradient-to-br from-rose-50 to-pink-50",    border: "border-rose-300",   dot: "bg-rose-500",   label: "Urgent staff visit", icon: <Stethoscope className="h-4 w-4 text-rose-500" /> },
 };
 
 function cardStyle(priority: number) {
@@ -91,7 +85,7 @@ function TimeOfDayIcon({ hour }: { hour: number }) {
 
 function TimelineCard({ call, index }: { call: CallDoc; index: number }) {
   const style   = cardStyle(call.priority);
-  const emoji   = REASON_EMOJI[call.reason] ?? "📋";
+  const emoji   = emojiForReason(call.reason);
   const hour    = call.ts.getHours();
 
   return (
@@ -113,7 +107,7 @@ function TimelineCard({ call, index }: { call: CallDoc; index: number }) {
             <div className="flex items-center gap-1.5">
               <TimeOfDayIcon hour={hour} />
               <span className="font-mono text-xs font-bold text-stone-500">
-                {call.ts.toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+                {call.ts.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
               </span>
             </div>
             <StatusBadge tone="neutral" className="gap-1.5 border-white/60 bg-white/70 shadow-sm backdrop-blur-sm">
@@ -153,7 +147,7 @@ export default function FamilyHistoryPage() {
     } catch (e: unknown) {
       return {
         db: null,
-        initError: e instanceof Error ? e.message : "Firestore 初期化に失敗しました",
+        initError: e instanceof Error ? e.message : "Firestore failed to initialize",
       };
     }
   }, []);
@@ -182,7 +176,7 @@ export default function FamilyHistoryPage() {
         .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
         .map((item) => ({
           id: item.id,
-          reason: item.reasons.join("・"),
+          reason: item.reasons.join(" · "),
           summary: item.aiSummary,
           priority: item.priority,
           ts: item.createdAt,
@@ -191,7 +185,7 @@ export default function FamilyHistoryPage() {
       setLoading(false);
     }, (err) => {
       setError(err.message.includes("index")
-        ? "Firestoreのインデックスが必要です。コンソールのエラーリンクをクリックして作成してください。"
+        ? "Firestore needs an index. Open the link in the console error to create it."
         : err.message);
       setLoading(false);
     });
@@ -234,7 +228,7 @@ export default function FamilyHistoryPage() {
           <AlertCircle className="mx-auto mb-4 h-12 w-12 text-red-400" />
           <p className="mb-6 text-sm font-bold text-red-500">{fatalError}</p>
           <AppButton onClick={() => window.location.reload()} tone="danger" className="px-6 py-3">
-            再読み込み
+            Reload
           </AppButton>
         </div>
       </div>
@@ -260,9 +254,9 @@ export default function FamilyHistoryPage() {
 
         {/* ── ヘッダー ───────────────────────────────────────────────────────── */}
         <DashboardHeader
-          title="ケア履歴（家族）"
+          title="Care history (family)"
           leftIcon={<Heart className="h-5 w-5 animate-pulse text-cyan-500" />}
-          rightSlot={<AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-[11px]">ログアウト</AppButton>}
+          rightSlot={<AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-[11px]">Sign out</AppButton>}
           contentClassName="max-w-lg px-4 py-4"
         />
         <div className="mx-auto max-w-lg px-4 pt-3">
@@ -278,7 +272,7 @@ export default function FamilyHistoryPage() {
               <span className="text-sm font-bold text-slate-800">{dateLabel(selectedDate)}</span>
               {isToday(selectedDate) && (
                 <StatusBadge tone="info" className="ml-2 border-cyan-500 bg-cyan-500 text-white shadow-sm">
-                  今日
+                  Today
                 </StatusBadge>
               )}
             </div>
@@ -304,7 +298,7 @@ export default function FamilyHistoryPage() {
           {loading && (
             <div className="flex flex-col items-center justify-center py-24 opacity-0 animate-[fadeIn_0.3s_ease-out_forwards]">
               <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-rose-200 border-t-rose-500" />
-              <p className="font-bold text-rose-400">読み込み中...</p>
+              <p className="font-bold text-rose-400">Loading…</p>
             </div>
           )}
 
@@ -312,9 +306,9 @@ export default function FamilyHistoryPage() {
           {!loading && calls.length === 0 && (
             <div className="flex flex-col items-center justify-center py-24 text-center opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]">
               <span className="mb-4 text-7xl">🌸</span>
-              <p className="text-lg font-bold text-rose-700">この日の記録はありません</p>
+              <p className="text-lg font-bold text-rose-700">No entries this day</p>
               <p className="mt-2 text-sm text-rose-400">
-                きよ子さんのお声がけやお話がここに残ります
+                Calls and notes for Kiyoko will appear here
               </p>
             </div>
           )}
@@ -329,8 +323,8 @@ export default function FamilyHistoryPage() {
                     <Sparkles className="h-4 w-4 text-violet-600" />
                   </div>
                   <div>
-                    <p className="text-xs font-black text-violet-600 uppercase tracking-wider">今日のハイライト</p>
-                    <p className="text-[10px] text-violet-400">AIによる一日のサマリー</p>
+                    <p className="text-xs font-black text-violet-600 uppercase tracking-wider">Day highlight</p>
+                    <p className="text-[10px] text-violet-400">AI summary</p>
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed text-violet-900 font-medium">{highlight}</p>
@@ -340,11 +334,11 @@ export default function FamilyHistoryPage() {
               <div className="mb-6 grid grid-cols-3 gap-3 opacity-0 animate-[fadeInUp_0.5s_ease-out_0.1s_forwards]">
                 <div className="rounded-2xl border border-rose-100 bg-white p-3 text-center shadow-sm transition-transform hover:scale-105">
                   <p className="text-2xl font-black text-rose-700">{stats.total}</p>
-                  <p className="mt-0.5 text-[10px] font-bold text-rose-400">お声がけ</p>
+                  <p className="mt-0.5 text-[10px] font-bold text-rose-400">Calls</p>
                 </div>
                 <div className="rounded-2xl border border-sky-100 bg-white p-3 text-center shadow-sm transition-transform hover:scale-105">
                   <p className="text-2xl font-black text-sky-600">{stats.aiCalls}</p>
-                  <p className="mt-0.5 text-[10px] font-bold text-sky-400">AIが対応</p>
+                  <p className="mt-0.5 text-[10px] font-bold text-sky-400">AI</p>
                 </div>
                 <div className={`rounded-2xl border p-3 text-center shadow-sm transition-transform hover:scale-105 ${
                   stats.urgentCalls > 0 ? "border-rose-200 bg-rose-50" : "border-amber-100 bg-white"
@@ -352,7 +346,7 @@ export default function FamilyHistoryPage() {
                   <p className={`text-2xl font-black ${stats.urgentCalls > 0 ? "text-rose-600" : "text-amber-600"}`}>
                     {stats.nurseCalls + stats.urgentCalls}
                   </p>
-                  <p className="mt-0.5 text-[10px] font-bold text-amber-400">看護師が対応</p>
+                  <p className="mt-0.5 text-[10px] font-bold text-amber-400">Staff</p>
                 </div>
               </div>
 
@@ -369,7 +363,7 @@ export default function FamilyHistoryPage() {
                     <div className="h-3.5 w-3.5 rounded-full border-2 border-stone-300 bg-white" />
                   </div>
                   <p className="mb-4 text-xs font-bold text-stone-300">
-                    {isToday(selectedDate) ? "今日はここまでです" : "この日の記録はここまでです"}
+                    {isToday(selectedDate) ? "That’s all for today" : "End of this day’s log"}
                   </p>
                 </div>
               </div>
@@ -379,9 +373,9 @@ export default function FamilyHistoryPage() {
                 style={{ animationDelay: `${calls.length * 60 + 200}ms` }}>
                 <p className="text-2xl mb-2">🌷</p>
                 <p className="text-sm font-bold text-rose-700">
-                  きよ子さんは今日も、スタッフとAIにしっかり見守られています。
+                  Kiyoko is looked after by staff and AI, around the clock.
                 </p>
-                <p className="mt-1 text-xs text-rose-400">24時間・365日、安心のサポート体制</p>
+                <p className="mt-1 text-xs text-rose-400">Support when it matters</p>
               </AppCard>
             </>
           )}

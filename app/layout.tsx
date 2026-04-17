@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "きよ子のホーム | ring",
-  description: "視線と声で、家族とつながるためのホーム画面です。",
+  title: "Kiyoko home | ring",
+  description: "Home screen to connect with family using gaze and voice.",
 };
 
 export default function RootLayout({
@@ -25,7 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="ja"
+      lang="en"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >

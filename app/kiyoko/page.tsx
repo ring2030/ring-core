@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { buildCallWritePayload } from "@/lib/calls/schema";
+import { REASON_RESTROOM } from "@/lib/calls/reasons";
 import { GazeHoverSurface } from "@/components/kiyoko/GazeHoverSurface";
 import { VoiceTriageModal } from "@/components/kiyoko/VoiceTriageModal";
 
@@ -11,9 +12,9 @@ async function saveToiletCall() {
   await addDoc(
     collection(getFirestoreDb(), "calls"),
     buildCallWritePayload({
-      reasons: ["トイレ"],
-      note: "簡易画面からの送信",
-      senderName: "きよ子",
+      reasons: [REASON_RESTROOM],
+      note: "Sent from simple screen",
+      senderName: "Kiyoko",
       senderRole: "patient",
       priority: 4,
     }),
@@ -37,7 +38,7 @@ export default function KiyokoNurseCallPage() {
     } catch (e) {
       console.error(e);
       setToiletError(
-        "Firebaseへの保存に失敗しました。.env.local の設定と Firestore のルールを確認してください。",
+        "Could not save to Firebase. Check .env.local and Firestore rules.",
       );
     } finally {
       setToiletSending(false);
@@ -52,17 +53,16 @@ export default function KiyokoNurseCallPage() {
     <div className="min-h-dvh bg-slate-100 font-sans text-slate-900">
       <header className="border-b border-slate-200 bg-white/90 px-4 py-3 text-center shadow-sm backdrop-blur">
         <h1 className="text-lg font-bold tracking-wide text-slate-800 sm:text-xl">
-          きよこちゃん・ナースコール
+          Kiyoko — nurse call
         </h1>
         <p className="mt-1 text-xs text-slate-500 sm:text-sm">
-          2秒間「見つめる」（マウスを止める）と確定します
+          Hold your gaze for 2 seconds (keep the cursor still) to confirm
         </p>
       </header>
 
       <div className="mx-auto grid min-h-[calc(100dvh-5.5rem)] max-w-[1400px] grid-cols-1 gap-3 p-3 sm:gap-4 sm:p-4 lg:grid-cols-2">
-        {/* 左：トイレ🚽 */}
         <GazeHoverSurface
-          aria-label="トイレのコール。2秒間カーソルを止めると、理由トイレ・緊急度中で送信されます。"
+          aria-label="Restroom call. Hold for 2 seconds to send as restroom, medium urgency."
           disabled={toiletSending || toiletSuccess}
           onActivate={handleToilet}
           ringColor="rgba(255,255,255,0.92)"
@@ -93,37 +93,36 @@ export default function KiyokoNurseCallPage() {
                 </svg>
               </div>
               <p className="text-2xl font-bold text-white drop-shadow-md">
-                送信しました
+                Sent
               </p>
               <p className="mt-1 text-sm font-medium text-white/90">
-                理由：トイレ／緊急度：中
+                Reason: Restroom · Priority: medium
               </p>
             </div>
           )}
           <span className="text-[clamp(2.5rem,12vmin,5.5rem)] font-black leading-none tracking-tight text-sky-950/90">
-            トイレ🚽
+            Restroom 🚽
           </span>
           <span className="mt-4 max-w-[90%] text-center text-base font-semibold text-sky-950/75 sm:text-lg">
-            いつものコール
+            Usual call
           </span>
         </GazeHoverSurface>
 
-        {/* 右：ねぇねぇ（音声UI） */}
         <GazeHoverSurface
-          aria-label="お話しボタン。2秒間カーソルを止めると、家族の顔と音声入力の画面が開きます。"
+          aria-label="Talk. Hold for 2 seconds to open voice and family video."
           disabled={voiceModalOpen}
           onActivate={openVoiceModal}
           ringColor="rgba(255,255,255,0.88)"
           className="flex min-h-[42vh] flex-col rounded-3xl border-2 border-rose-300/90 bg-gradient-to-br from-rose-400 via-pink-500 to-fuchsia-600 shadow-xl transition-shadow hover:shadow-2xl lg:min-h-[calc(100dvh-8rem)]"
         >
-          <span className="text-[clamp(3rem,14vmin,6.5rem)] font-black leading-none tracking-tight text-white drop-shadow-md">
-            ねぇねぇ
+          <span className="text-[clamp(2.5rem,14vmin,6.5rem)] font-black leading-none tracking-tight text-white drop-shadow-md">
+            Hey
           </span>
           <span className="mt-5 max-w-[92%] text-center text-base font-semibold leading-relaxed text-rose-50 sm:text-lg">
-            お話し（音声で伝える）
+            Talk (voice)
           </span>
           <span className="mt-2 text-center text-sm text-rose-100/90">
-            マイクで聞き取り → 自動で緊急度をつけて送ります
+            Mic → triage → send with priority
           </span>
         </GazeHoverSurface>
       </div>
@@ -139,7 +138,7 @@ export default function KiyokoNurseCallPage() {
             onClick={() => setToiletError(null)}
             className="ml-3 font-bold underline"
           >
-            閉じる
+            Dismiss
           </button>
         </div>
       )}

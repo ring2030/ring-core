@@ -44,7 +44,7 @@ export default function SettingsPage() {
       const list = await navigator.mediaDevices.enumerateDevices();
       setVideoInputs(list.filter((d) => d.kind === "videoinput"));
     } catch {
-      setMediaError("カメラ一覧を取得できませんでした。ブラウザでカメラを許可してください。");
+      setMediaError("Could not list cameras. Allow camera access in the browser.");
     }
   }, []);
 
@@ -62,7 +62,7 @@ export default function SettingsPage() {
       })
       .catch(() => {
         if (cancelled) return;
-        setMediaError("カメラ一覧を取得できませんでした。ブラウザでカメラを許可してください。");
+        setMediaError("Could not list cameras. Allow camera access in the browser.");
       });
     return () => {
       cancelled = true;
@@ -99,25 +99,25 @@ export default function SettingsPage() {
               className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
             >
               <ArrowLeft className="size-4" strokeWidth={2} aria-hidden />
-              ホームへ
+              Home
             </Link>
           </div>
           <h1 className="text-lg font-bold tracking-tight text-slate-800 sm:text-xl">
-            設定
+            Settings
           </h1>
         </div>
       </header>
 
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
         <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-base font-bold text-slate-900">操作のしかた</h2>
+          <h2 className="text-base font-bold text-slate-900">How you interact</h2>
           <p className="mt-1 text-sm text-slate-600">
-            ホーム画面では次の設定が使われます。
+            These options apply on the home screen.
           </p>
           <div
             className="mt-4 flex rounded-2xl border border-slate-200 bg-slate-50 p-1"
             role="tablist"
-            aria-label="入力のしかた"
+            aria-label="Input mode"
           >
             <button
               type="button"
@@ -130,7 +130,7 @@ export default function SettingsPage() {
               }`}
               onClick={() => applyInputMode("eyedid")}
             >
-              視線
+              Gaze
             </button>
             <button
               type="button"
@@ -143,16 +143,16 @@ export default function SettingsPage() {
               }`}
               onClick={() => applyInputMode("pointer")}
             >
-              タッチ・マウス
+              Touch / mouse
             </button>
           </div>
         </section>
 
         {inputMode === "eyedid" && (
           <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-            <h2 className="text-base font-bold text-slate-900">視線エンジン</h2>
+            <h2 className="text-base font-bold text-slate-900">Gaze engine</h2>
             <p className="mt-1 text-sm text-slate-600">
-              通常は「虹彩」で問題ありません。Eyedid は別ライセンスが必要な場合があります。
+              Iris tracking works for most setups. Eyedid needs its own license.
             </p>
             <div className="mt-4 flex rounded-2xl border border-slate-200 bg-slate-50 p-1">
               <button
@@ -164,7 +164,7 @@ export default function SettingsPage() {
                 }`}
                 onClick={() => applyEngine("iris")}
               >
-                虹彩
+                Iris
               </button>
               <button
                 type="button"
@@ -181,9 +181,9 @@ export default function SettingsPage() {
 
             {gazeEngine === "iris" && (
               <div className="mt-6 border-t border-slate-100 pt-5">
-                <h3 className="text-sm font-bold text-slate-800">カメラ（虹彩）</h3>
+                <h3 className="text-sm font-bold text-slate-800">Camera (iris)</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  複数台あるときだけ選んでください。
+                  Pick a device only if you have more than one.
                 </p>
                 {mediaError && (
                   <p className="mt-2 text-sm text-red-600" role="alert">
@@ -196,7 +196,7 @@ export default function SettingsPage() {
                     onClick={() => void refreshDevices()}
                     className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
                   >
-                    一覧を更新
+                    Refresh list
                   </button>
                 </div>
                 <ul className="mt-3 space-y-2">
@@ -212,7 +212,7 @@ export default function SettingsPage() {
                             : "border-slate-200 bg-white hover:bg-slate-50"
                         }`}
                       >
-                        {d.label || `カメラ ${d.deviceId.slice(0, 8)}…`}
+                        {d.label || `Camera ${d.deviceId.slice(0, 8)}…`}
                       </button>
                     </li>
                   ))}
@@ -223,9 +223,9 @@ export default function SettingsPage() {
             {gazeEngine === "eyedid" && (
               <div className="mt-6 space-y-5 border-t border-slate-100 pt-5">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">カメラの位置（Eyedid）</h3>
+                  <h3 className="text-sm font-bold text-slate-800">Camera position (Eyedid)</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    内蔵カメラがモニタの上か下かに合わせます。ホームに戻ると反映されます。
+                    Match whether the built-in camera is above or below the display. Return home to apply.
                   </p>
                   <div className="mt-3 flex gap-2">
                     <button
@@ -237,7 +237,7 @@ export default function SettingsPage() {
                           : "border-slate-200 bg-white hover:bg-slate-50"
                       }`}
                     >
-                      モニタの上
+                      Above display
                     </button>
                     <button
                       type="button"
@@ -248,20 +248,20 @@ export default function SettingsPage() {
                           : "border-slate-200 bg-white hover:bg-slate-50"
                       }`}
                     >
-                      モニタの下
+                      Below display
                     </button>
                   </div>
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold text-slate-800">視線の再調整</h3>
+                  <h3 className="text-sm font-bold text-slate-800">Recalibrate gaze</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Eyedid のキャリブレーションをやり直します。
+                    Run Eyedid calibration again from home.
                   </p>
                   <Link
                     href="/?recalibrate=1"
                     className="mt-3 inline-flex min-h-[44px] items-center justify-center rounded-xl bg-slate-800 px-4 py-2.5 text-sm font-bold text-white shadow hover:bg-slate-700"
                   >
-                    再調整をホームで開く
+                    Open recalibration on home
                   </Link>
                 </div>
               </div>
@@ -273,9 +273,9 @@ export default function SettingsPage() {
           (inputMode === "eyedid" && gazeEngine === "eyedid")) && (
           <section className="rounded-2xl border border-slate-200/80 bg-white p-0 shadow-sm sm:p-0">
             <div className="border-b border-slate-100 px-5 py-4 sm:px-6">
-              <h2 className="text-base font-bold text-slate-900">左右の感度</h2>
+              <h2 className="text-base font-bold text-slate-900">Left / right sensitivity</h2>
               <p className="mt-1 text-sm text-slate-600">
-                トイレとお話の判定幅です。虹彩モードでは使いません。
+                Width for Restroom vs Chat targets. Not used in iris mode.
               </p>
             </div>
             <div className="p-5 sm:p-6">
@@ -290,9 +290,9 @@ export default function SettingsPage() {
         )}
 
         <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
-          <h2 className="text-base font-bold text-slate-900">スタッフ・家族</h2>
+          <h2 className="text-base font-bold text-slate-900">Staff & family</h2>
           <p className="mt-1 text-sm text-slate-600">
-            記録やナース向け画面はこちらから開けます。
+            Open the log and nurse views from here.
           </p>
           <div className="mt-4">
             <StaffLinks className="gap-2" />
@@ -302,7 +302,7 @@ export default function SettingsPage() {
         <p className="pb-8 text-center text-xs text-slate-500">
           <Link href="/" className="inline-flex items-center gap-1 font-medium text-cyan-700 hover:underline">
             <Home className="size-3.5" aria-hidden />
-            きよ子のホームへ
+            Kiyoko home
           </Link>
         </p>
       </main>

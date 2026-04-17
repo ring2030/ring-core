@@ -21,6 +21,7 @@ import {
   DashboardPageFrame,
 } from "@/components/dashboard/DashboardChrome";
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
+import { REASON_CHAT, REASON_RESTROOM } from "@/lib/calls/reasons";
 
 // ─── 型 ──────────────────────────────────────────────
 
@@ -46,10 +47,10 @@ function toHHMM(ts: Date | null): string {
 
 function todayLabel(): string {
   const d = new Date();
-  const weekday = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}/${mm}/${dd}（${weekday}）`;
+  return `${d.getFullYear()}/${mm}/${dd} (${weekday})`;
 }
 
 function startOfToday(): Date {
@@ -84,8 +85,8 @@ function StatPill({
 }
 
 function TimelineDot({ reasons }: { reasons: string[] }) {
-  const isToilet = reasons.includes("トイレ");
-  const isChat = reasons.includes("お話");
+  const isToilet = reasons.some((r) => r === REASON_RESTROOM || r === "トイレ");
+  const isChat = reasons.some((r) => r === REASON_CHAT || r === "お話");
   if (isToilet)
     return (
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-200 text-base">
@@ -179,7 +180,7 @@ export default function FamilyDashboardPage() {
     try {
       db = getFirestoreDb();
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Firestore 初期化に失敗しました";
+      const msg = e instanceof Error ? e.message : "Firestore failed to initialize";
       setFirestoreError(msg);
       setLoading(false);
       return;
@@ -210,7 +211,7 @@ export default function FamilyDashboardPage() {
           setCalls(docs);
         } catch (e) {
           console.error("[family] calls map error", e);
-          setFirestoreError("データの表示に失敗しました");
+          setFirestoreError("Could not display data");
         } finally {
           setLoading(false);
         }
@@ -252,13 +253,13 @@ export default function FamilyDashboardPage() {
         data = rawText ? (JSON.parse(rawText) as typeof data) : {};
       } catch {
         throw new Error(
-          res.ok ? "応答の形式が不正です" : `HTTP ${res.status}`,
+          res.ok ? "Invalid response format" : `HTTP ${res.status}`,
         );
       }
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
       setAiMessage(typeof data.text === "string" ? data.text : null);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "要約の取得に失敗しました";
+      const msg = e instanceof Error ? e.message : "Could not load summary";
       setAiError(msg);
       console.error("[family] family-summary", e);
     } finally {
@@ -276,7 +277,7 @@ export default function FamilyDashboardPage() {
       } catch (e) {
         console.error("[family] generateSummary", e);
         setAiError(
-          e instanceof Error ? e.message : "要約の取得に失敗しました",
+          e instanceof Error ? e.message : "Could not load summary",
         );
       }
     })();
@@ -289,8 +290,10 @@ export default function FamilyDashboardPage() {
     return acc;
   }, {});
 
-  const toiletCount = countByReason["トイレ"] ?? 0;
-  const chatCount = countByReason["お話"] ?? 0;
+  const toiletCount =
+    (countByReason[REASON_RESTROOM] ?? 0) + (countByReason["トイレ"] ?? 0);
+  const chatCount =
+    (countByReason[REASON_CHAT] ?? 0) + (countByReason["お話"] ?? 0);
 
   // ─── レンダー ────────────────────────────────────────
 
@@ -298,11 +301,11 @@ export default function FamilyDashboardPage() {
     <DashboardPageFrame>
       {/* ヘッダー */}
       <DashboardHeader
-        title="ケアダッシュボード（家族）"
+        title="Care dashboard (family)"
         subtitle={
           <span className="inline-flex items-center gap-1.5">
             <Clock size={13} />
-            {dateLabel}のようす
+            {dateLabel} snapshot
           </span>
         }
         leftIcon={<span className="text-4xl">💗</span>}
@@ -310,7 +313,7 @@ export default function FamilyDashboardPage() {
           <div className="flex items-center gap-3">
             <Heart size={28} className="text-cyan-500" fill="currentColor" />
             <AppButton type="button" tone="secondary" onClick={logout} className="rounded-full text-xs">
-              ログアウト
+              Sign out
             </AppButton>
           </div>
         }
@@ -329,11 +332,11 @@ export default function FamilyDashboardPage() {
         <AppCard className="border-violet-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-violet-700">
             <Video size={18} className="text-violet-500" />
-            動画レター（おばあちゃんの画面に届きます）
+            Video letter (plays on her tablet)
           </h2>
           <p className="mb-4 text-sm text-stone-500">
-            動画を選ぶと Storage の <code className="rounded bg-stone-100 px-1">videos/</code>{" "}
-            に保存され、Firestore のメッセージとして送信されます。
+            Files upload to <code className="rounded bg-stone-100 px-1">videos/</code> in Storage and
+            are sent as Firestore messages.
           </p>
           {/* iOS / スマホ: display:none + input.click() はファイル選択が開かないことがあるため、label + sr-only を使用 */}
           <label
@@ -352,18 +355,18 @@ export default function FamilyDashboardPage() {
             {videoUploading ? (
               <>
                 <RefreshCw size={20} className="animate-spin shrink-0" />
-                アップロード中…
+                Uploading…
               </>
             ) : (
               <>
                 <Video size={20} className="shrink-0" />
-                動画を選んで送信
+                Choose video to send
               </>
             )}
           </label>
           {videoUploadOk && (
             <p className="mt-3 text-sm font-medium text-emerald-600">
-              送信しました。おばあちゃんの画面で自動再生されます。
+              Sent. It will play automatically on her screen.
             </p>
           )}
           {videoUploadError && (
@@ -384,7 +387,7 @@ export default function FamilyDashboardPage() {
           <div className="mb-4 flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-bold text-rose-600">
               <Sparkles size={18} className="text-rose-400" />
-              AI 孫娘からのメッセージ
+              Message from the AI companion
             </h2>
             <AppButton
               type="button"
@@ -394,7 +397,7 @@ export default function FamilyDashboardPage() {
               className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium text-rose-600"
             >
               <RefreshCw size={12} className={aiLoading ? "animate-spin" : ""} />
-              更新
+              Refresh
             </AppButton>
           </div>
 
@@ -421,7 +424,7 @@ export default function FamilyDashboardPage() {
                 {aiMessage}
               </p>
             ) : (
-              <p className="text-sm text-stone-400">メッセージを生成できませんでした。</p>
+              <p className="text-sm text-stone-400">Could not generate a message.</p>
             )}
           </div>
         </AppCard>
@@ -430,7 +433,7 @@ export default function FamilyDashboardPage() {
         <AppCard className="border-amber-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-amber-700">
             <MessageCircle size={18} className="text-amber-500" />
-            今日の呼び出しまとめ
+            Today’s calls
           </h2>
 
           {loading ? (
@@ -445,17 +448,17 @@ export default function FamilyDashboardPage() {
           ) : (
             <div className="flex gap-4">
               <StatPill
-                label="合計"
+                label="Total"
                 value={calls.length}
                 color="bg-amber-100 text-amber-800"
               />
               <StatPill
-                label="🚽 トイレ"
+                label="🚽 Restroom"
                 value={toiletCount}
                 color="bg-orange-100 text-orange-700"
               />
               <StatPill
-                label="💬 お話"
+                label="💬 Chat"
                 value={chatCount}
                 color="bg-rose-100 text-rose-700"
               />
@@ -467,9 +470,9 @@ export default function FamilyDashboardPage() {
         <AppCard className="border-stone-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-stone-600">
             <Clock size={18} className="text-stone-400" />
-            今日の呼び出し履歴
+            Today’s timeline
             <StatusBadge tone="neutral" className="ml-auto text-xs font-medium">
-              {calls.length} 件
+              {calls.length} calls
             </StatusBadge>
           </h2>
 
@@ -485,8 +488,8 @@ export default function FamilyDashboardPage() {
           ) : calls.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-10 text-stone-400">
               <span className="text-5xl">☀️</span>
-              <p className="text-sm">今日はまだ呼び出しがありません</p>
-              <p className="text-xs">おばあちゃんは穏やかに過ごしています</p>
+              <p className="text-sm">No calls yet today</p>
+              <p className="text-xs">She’s having a quiet day</p>
             </div>
           ) : (
             <ul className="space-y-3">
@@ -498,7 +501,7 @@ export default function FamilyDashboardPage() {
                   <TimelineDot reasons={c.reasons} />
                   <div className="flex-1">
                     <p className="text-sm font-semibold text-stone-700">
-                      {c.reasons.join("・") || "不明"}
+                      {c.reasons.join(" · ") || "Unknown"}
                     </p>
                     {c.notes && (
                       <p className="mt-0.5 text-xs text-stone-400">{c.notes}</p>
@@ -516,9 +519,9 @@ export default function FamilyDashboardPage() {
 
         {/* フッター */}
         <p className="text-center text-xs text-stone-400">
-          今日のデータをリアルタイムで確認中 —{" "}
+          Live updates for today —{" "}
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-rose-400 align-middle" />{" "}
-          接続中
+          connected
         </p>
       </main>
     </DashboardPageFrame>

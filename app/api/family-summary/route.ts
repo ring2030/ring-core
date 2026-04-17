@@ -24,9 +24,9 @@ export function buildPrompt(req: FamilySummaryRequest): string {
 
   if (calls.length === 0) {
     return (
-      `今日（${date}）は「きよ子」おばあちゃんからの呼び出しが0件でした。` +
-      "家族へ向けた「AI孫娘」として、安心できる温かいメッセージを3〜5文で書いてください。" +
-      "呼び出しがなくても、おばあちゃんが穏やかに過ごせたという良い解釈をしてください。"
+      `On ${date}, Kiyoko had 0 calls logged. ` +
+      "As a warm AI companion speaking to her family, write 3–5 short reassuring sentences in English. " +
+      "Even with no calls, interpret the day positively (restful, calm, etc.)."
     );
   }
 
@@ -37,26 +37,26 @@ export function buildPrompt(req: FamilySummaryRequest): string {
     }
   }
   const countStr = Object.entries(countByReason)
-    .map(([k, v]) => `「${k}」${v}回`)
-    .join("、");
+    .map(([k, v]) => `"${k}" ×${v}`)
+    .join(", ");
 
   const timeline = calls
-    .map((c) => `  ${c.time} — ${c.reasons.join("・")}${c.notes ? `（${c.notes}）` : ""}`)
+    .map((c) => `  ${c.time} — ${c.reasons.join(" · ")}${c.notes ? ` (${c.notes})` : ""}`)
     .join("\n");
 
   return (
-    `今日（${date}）の「きよ子」おばあちゃんの呼び出し記録を教えます。\n\n` +
-    `【呼び出し合計】${calls.length}回\n` +
-    `【内訳】${countStr}\n` +
-    `【タイムライン】\n${timeline}\n\n` +
-    "上の記録をもとに、家族（孫娘）として「今日のおばあちゃんのようす」を伝える温かいメッセージを書いてください。\n" +
-    "以下のルールを必ず守ってください：\n" +
-    "1. 書き出しは「今日のおばあちゃんはね、」などの孫娘らしい話し言葉で始める。\n" +
-    "2. 呼び出しの傾向（多い時間帯・多い種別）を自然な言葉で伝える。\n" +
-    "3. 家族へのアドバイス（電話してあげて、など）を最後に一言添える。\n" +
-    "4. 3〜5文、150文字以内にまとめる。\n" +
-    "5. 絵文字は2〜3個まで。ネガティブな表現は避けて温かいトーンを保つ。\n" +
-    "メッセージだけを出力してください。見出しや箇条書きは不要です。"
+    `Here is Kiyoko’s call log for ${date}.\n\n` +
+    `Total calls: ${calls.length}\n` +
+    `By reason: ${countStr}\n` +
+    `Timeline:\n${timeline}\n\n` +
+    "Write a warm, reassuring message in English for her family (granddaughter tone).\n" +
+    "Rules:\n" +
+    "1. Start in a conversational way (e.g. “Today, grandma…”).\n" +
+    "2. Mention patterns (time of day, common reasons) naturally.\n" +
+    "3. End with one gentle suggestion for the family (e.g. call her).\n" +
+    "4. Keep it 3–5 sentences, under ~500 characters.\n" +
+    "5. Use at most 2–3 emojis; stay positive and kind.\n" +
+    "Output only the message — no headings or bullets."
   );
 }
 
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return NextResponse.json(
-        { error: "GEMINI_API_KEY が未設定です" },
+        { error: "GEMINI_API_KEY is not set" },
         { status: 500 },
       );
     }
@@ -111,14 +111,14 @@ export async function POST(req: Request) {
       | undefined;
     const text: string =
       data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ??
-      "今日もおばあちゃんは元気に過ごしていたよ。また連絡してあげてね！";
+      "Grandma had a peaceful day. Give her a call when you can!";
 
     return NextResponse.json({ text });
   } catch (err: unknown) {
     const message = toErrorMessage(err);
     console.error("family-summary route error:", message);
     return NextResponse.json(
-      { error: message || "不明なエラー" },
+      { error: message || "Unknown error" },
       { status: 500 },
     );
   }

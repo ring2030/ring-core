@@ -35,14 +35,14 @@ export class ErrorBoundary extends Component<Props, State> {
           role="alert"
           className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-red-800 bg-red-950/60 p-8 text-center text-red-300"
         >
-          <p className="text-lg font-bold">エラーが発生しました</p>
+          <p className="text-lg font-bold">Something went wrong</p>
           <p className="text-sm opacity-75">{error.message}</p>
           <button
             type="button"
             onClick={() => this.setState({ error: null })}
             className="rounded-full border border-red-700 px-4 py-2 text-sm hover:bg-red-900/50"
           >
-            再試行
+            Try again
           </button>
         </div>
       );

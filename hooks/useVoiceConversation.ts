@@ -3,16 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
-import { makeJapaneseUtterance } from "@/lib/voice/japaneseVoice";
 import type { TriageResponse } from "@/app/api/chat/route";
 
 export type UseVoiceConversationParams = {
-  /** true のとき会話セッションを開始・維持する */
+  /** When true, run the voice conversation session */
   active: boolean;
   currentCallIdRef: React.MutableRefObject<string | null>;
   conversationHistoryRef: React.MutableRefObject<{ role: string; text: string }[]>;
   conversationTurnRef: React.MutableRefObject<number>;
-  /** 会話が完全に終了したとき（TTS 完了後）に呼ばれる */
+  /** Called when the session fully ends (after TTS) */
   onEnd: () => void;
 };
 
@@ -22,10 +21,15 @@ export type UseVoiceConversationResult = {
   isThinking: boolean;
 };
 
+function speakUtterance(text: string): SpeechSynthesisUtterance {
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = "en-US";
+  u.rate = 0.95;
+  return u;
+}
+
 /**
- * Gemini 音声会話セッション。
- * active=true になると Web Speech API でマイクを起動し、発話をデバウンスして
- * /api/chat に送る。会話が終了したら onEnd() を呼ぶ。
+ * Voice session: Web Speech API → /api/chat → TTS. Japanese STT, English UI + TTS copy.
  */
 export function useVoiceConversation({
   active,
@@ -34,12 +38,14 @@ export function useVoiceConversation({
   conversationTurnRef,
   onEnd,
 }: UseVoiceConversationParams): UseVoiceConversationResult {
-  const [aiText, setAiText] = useState("お話し相手を呼んでいます...");
+  const [aiText, setAiText] = useState("Getting your companion ready…");
   const [isListening, setIsListening] = useState(false);
   const [isThinking, setIsThinking] = useState(false);
 
   const onEndRef = useRef(onEnd);
-  useEffect(() => { onEndRef.current = onEnd; });
+  useEffect(() => {
+    onEndRef.current = onEnd;
+  });
 
   useEffect(() => {
     if (!active) return;
@@ -57,27 +63,37 @@ export function useVoiceConversation({
     let noSpeechTimer: ReturnType<typeof setTimeout> | null = null;
 
     const clearDebounce = () => {
-      if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
     };
     const clearNoSpeech = () => {
-      if (noSpeechTimer) { clearTimeout(noSpeechTimer); noSpeechTimer = null; }
+      if (noSpeechTimer) {
+        clearTimeout(noSpeechTimer);
+        noSpeechTimer = null;
+      }
     };
 
     const startListening = () => {
       if (!mounted || thinking || !recognition || !shouldContinueConversation) return;
       speechBuffer = "";
       clearDebounce();
-      setAiText("（話しかけてください...）");
+      setAiText("(Speak when ready…)");
       setIsListening(true);
       clearNoSpeech();
       noSpeechTimer = setTimeout(() => {
         if (!mounted || !shouldContinueConversation) return;
-        speakAndFinish("またお話ししましょうね。");
+        speakAndFinish("Let’s talk again soon.");
       }, 15_000);
-      try { recognition.start(); } catch { /* 既に起動中は無視 */ }
+      try {
+        recognition.start();
+      } catch {
+        /* already running */
+      }
     };
 
-    const speakAndListen = async (text: string) => {
+    const speakAndListen = (text: string) => {
       if (!mounted) return;
       clearNoSpeech();
       clearDebounce();
@@ -87,30 +103,40 @@ export function useVoiceConversation({
       setIsThinking(false);
       thinking = false;
 
-      const u = await makeJapaneseUtterance(text);
+      const u = speakUtterance(text);
       u.onend = () => {
         if (mounted && shouldContinueConversation) {
-          setTimeout(() => { if (mounted && shouldContinueConversation) startListening(); }, 1_200);
+          setTimeout(() => {
+            if (mounted && shouldContinueConversation) startListening();
+          }, 1_200);
         }
       };
       synth.cancel();
       synth.speak(u);
     };
 
-    const speakAndFinish = async (text: string) => {
+    const speakAndFinish = (text: string) => {
       if (!mounted) return;
       shouldContinueConversation = false;
       clearNoSpeech();
       clearDebounce();
       speechBuffer = "";
-      if (recognition) { try { recognition.stop(); } catch {} }
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch {
+          /* ignore */
+        }
+      }
       setAiText(text);
       setIsListening(false);
       setIsThinking(false);
       thinking = false;
 
-      const u = await makeJapaneseUtterance(text);
-      u.onend = () => { if (mounted) onEndRef.current(); };
+      const u = speakUtterance(text);
+      u.onend = () => {
+        if (mounted) onEndRef.current();
+      };
       synth.cancel();
       synth.speak(u);
     };
@@ -119,16 +145,24 @@ export function useVoiceConversation({
       if (!mounted || !shouldContinueConversation || thinking) return;
 
       if (conversationTurnRef.current >= 10) {
-        speakAndFinish("きよ子さんのお話、看護師さんへしっかり伝えました。ゆっくり休んでくださいね。");
+        speakAndFinish(
+          "I’ve passed your message to the nurse team. Rest for a bit.",
+        );
         return;
       }
 
       conversationTurnRef.current += 1;
-      if (recognition) { try { recognition.stop(); } catch {} }
+      if (recognition) {
+        try {
+          recognition.stop();
+        } catch {
+          /* ignore */
+        }
+      }
       thinking = true;
       setIsThinking(true);
       setIsListening(false);
-      setAiText(`「${finalText}」...`);
+      setAiText(`「${finalText}」…`);
 
       try {
         const res = await fetch("/api/chat", {
@@ -165,10 +199,12 @@ export function useVoiceConversation({
         }
       } catch {
         if (mounted) {
-          setAiText("通信に問題があります。少し待ってみてください。");
+          setAiText("Connection issue. One moment…");
           setIsThinking(false);
           thinking = false;
-          setTimeout(() => { if (mounted && shouldContinueConversation) startListening(); }, 2000);
+          setTimeout(() => {
+            if (mounted && shouldContinueConversation) startListening();
+          }, 2000);
         }
       }
     };
@@ -184,13 +220,13 @@ export function useVoiceConversation({
         clearNoSpeech();
         noSpeechTimer = setTimeout(() => {
           if (!mounted || !shouldContinueConversation) return;
-          speakAndFinish("またお話ししましょうね。");
+          speakAndFinish("Let’s talk again soon.");
         }, 15_000);
 
         const segment = String(event.results[0][0].transcript ?? "").trim();
         if (!segment) return;
 
-        speechBuffer = (speechBuffer ? speechBuffer + "　" + segment : segment);
+        speechBuffer = speechBuffer ? `${speechBuffer} ${segment}` : segment;
         setAiText(`「${speechBuffer}」`);
         setIsListening(false);
 
@@ -207,7 +243,7 @@ export function useVoiceConversation({
             return;
           }
 
-          sendToApi(finalText);
+          void sendToApi(finalText);
         }, 3_500);
       };
 
@@ -216,7 +252,11 @@ export function useVoiceConversation({
         if (debounceTimer) {
           setTimeout(() => {
             if (mounted && shouldContinueConversation && !thinking && debounceTimer) {
-              try { recognition.start(); } catch {}
+              try {
+                recognition.start();
+              } catch {
+                /* ignore */
+              }
             }
           }, 80);
         }
@@ -224,7 +264,7 @@ export function useVoiceConversation({
 
       recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
         if (event.error === "not-allowed") {
-          speakAndListen("マイクの許可が必要です。ブラウザの設定をご確認ください。");
+          speakAndListen("Microphone permission is required. Check your browser settings.");
           return;
         }
         if (mounted && !thinking && shouldContinueConversation) {
@@ -235,7 +275,7 @@ export function useVoiceConversation({
       };
     }
 
-    setTimeout(() => speakAndListen("きよ子さん、どうしました？何かありましたか？"), 800);
+    setTimeout(() => speakAndListen("Kiyoko, what’s going on? Is something wrong?"), 800);
 
     return () => {
       mounted = false;
@@ -245,8 +285,8 @@ export function useVoiceConversation({
       synth.cancel();
       if (recognition) recognition.abort();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active]); // refs are stable objects; only `active` meaningfully changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   return { aiText, isListening, isThinking };
 }

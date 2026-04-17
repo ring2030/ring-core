@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     const session = sessionToken ? verifySessionToken(sessionToken) : null;
     if (!session || session.role !== "nurse") {
       return NextResponse.json(
-        { ok: false, error: "看護師ログインが必要です。" },
+        { ok: false, error: "Staff sign-in required." },
         { status: 401 },
       );
     }
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       path: `/access?token=${encodeURIComponent(token)}`,
     });
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "招待URLの発行に失敗しました。";
+    const message = error instanceof Error ? error.message : "Could not create invite link.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
 }
