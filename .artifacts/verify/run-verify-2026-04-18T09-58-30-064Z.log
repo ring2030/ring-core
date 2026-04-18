@@ -4,3 +4,108 @@
 > ring-core@0.1.0 lint
 > eslint
 
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  19:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 3 problems (0 errors, 3 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:58:38
+   Duration  1.53s (transform 437ms, setup 0ms, import 724ms, tests 40ms, environment 9.58s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+
+> Build error occurred
+Error: Turbopack build failed with 2 errors:
+./lib/calls/reasons.ts:29:9
+Expected a semicolon
+  [90m27 |[0m   体位を変えて: [32m"Reposition"[0m,
+  [90m28 |[0m   その他: [32m"Other"[0m,
+[31m[1m>[0m [90m29 |[0m   お水・お茶: [32m"Water / tea"[0m,
+  [90m   |[0m       [31m[1m^^[0m
+  [90m30 |[0m   [32m"痛い・苦しい"[0m: [32m"Pain / distress"[0m,
+  [90m31 |[0m   [32m"不安・さみしい"[0m: [32m"Anxiety / loneliness"[0m,
+  [90m32 |[0m   必要なし: [32m"None needed"[0m,
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./lib/calls/reasons.ts [Client Component Browser]
+    ./app/dashboard/history/page.tsx [Client Component Browser]
+    ./app/dashboard/history/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/calls/reasons.ts [Client Component SSR]
+    ./app/dashboard/family/page.tsx [Client Component SSR]
+    ./app/dashboard/family/page.tsx [Server Component]
+
+
+./lib/calls/reasons.ts:29:9
+Unexpected character '・'
+  [90m27 |[0m   体位を変えて: [32m"Reposition"[0m,
+  [90m28 |[0m   その他: [32m"Other"[0m,
+[31m[1m>[0m [90m29 |[0m   お水・お茶: [32m"Water / tea"[0m,
+  [90m   |[0m       [31m[1m^[0m
+  [90m30 |[0m   [32m"痛い・苦しい"[0m: [32m"Pain / distress"[0m,
+  [90m31 |[0m   [32m"不安・さみしい"[0m: [32m"Anxiety / loneliness"[0m,
+  [90m32 |[0m   必要なし: [32m"None needed"[0m,
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./lib/calls/reasons.ts [Client Component Browser]
+    ./app/dashboard/history/page.tsx [Client Component Browser]
+    ./app/dashboard/history/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./lib/calls/reasons.ts [Client Component SSR]
+    ./app/dashboard/family/page.tsx [Client Component SSR]
+    ./app/dashboard/family/page.tsx [Server Component]
+
+
+    at <unknown> (./lib/calls/reasons.ts:29:9)
+    at <unknown> (./lib/calls/reasons.ts:29:9)
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 31335ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-04-18T09-58-30-064Z.log

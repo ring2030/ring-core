@@ -1,0 +1,98 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  19:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 3 problems (0 errors, 3 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:59:58
+   Duration  1.58s (transform 370ms, setup 0ms, import 649ms, tests 47ms, environment 10.11s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.3s
+  Running TypeScript ...
+  Finished TypeScript in 3.5s ...
+  Collecting page data using 19 workers ...
+  Generating static pages using 19 workers (0/23) ...
+  Generating static pages using 19 workers (5/23) 
+  Generating static pages using 19 workers (11/23) 
+  Generating static pages using 19 workers (17/23) 
+✓ Generating static pages using 19 workers (23/23) in 456ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /access
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/nurse-login
+├ ƒ /api/chat
+├ ƒ /api/family-summary
+├ ƒ /api/invite
+├ ƒ /api/invite/consume
+├ ƒ /api/nurse-accounts
+├ ○ /dashboard
+├ ○ /dashboard/family
+├ ○ /dashboard/history
+├ ○ /dashboard/nurse
+├ ○ /demo
+├ ○ /demo-1min
+├ ○ /kiyoko
+├ ƒ /login
+├ ƒ /nurse-login
+├ ○ /record
+└ ○ /settings
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+--- [build] exit_code=0
+
+✅ run:verify passed in 17958ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-04-18T09-59-51-443Z.log
