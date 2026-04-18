@@ -1,8 +1,8 @@
-/** TrackingState の数値を日本語ラベルに変換する */
+/** Map Eyedid TrackingState codes to short English labels (debug / diagnostics). */
 export function trackingLabel(state: number | null): string {
-  if (state === 0) return "良好";
-  if (state === 1) return "やや不安定";
-  if (state === 2) return "未対応";
-  if (state === 3) return "顔が見えない";
-  return "待機中";
+  if (state === 0) return "Good";
+  if (state === 1) return "Slightly unstable";
+  if (state === 2) return "Unsupported";
+  if (state === 3) return "Face not visible";
+  return "Idle";
 }

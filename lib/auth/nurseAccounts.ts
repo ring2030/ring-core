@@ -86,11 +86,11 @@ export async function verifyNurseCredentials(id: string, password: string): Prom
 
 export async function createNurseAccount(id: string, password: string): Promise<NurseAccountView> {
   const normId = id.trim();
-  if (!normId) throw new Error("IDは必須です。");
-  if (password.length < 1) throw new Error("パスワードは必須です。");
+  if (!normId) throw new Error("ID is required.");
+  if (password.length < 1) throw new Error("Password is required.");
   const store = await readStore();
   if (store.accounts.some((a) => a.id === normId)) {
-    throw new Error("そのIDは既に存在します。");
+    throw new Error("That ID already exists.");
   }
   const now = new Date().toISOString();
   const created: StoredNurseAccount = {
@@ -112,7 +112,7 @@ export async function updateNurseAccount(args: {
 }): Promise<NurseAccountView> {
   const store = await readStore();
   const account = store.accounts.find((a) => a.id === args.id);
-  if (!account) throw new Error("指定IDが見つかりません。");
+  if (!account) throw new Error("No account found for that ID.");
   if (typeof args.disabled === "boolean") account.disabled = args.disabled;
   if (typeof args.password === "string" && args.password.length > 0) {
     account.passwordHash = hashPassword(args.password);

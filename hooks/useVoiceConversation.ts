@@ -29,7 +29,7 @@ function speakUtterance(text: string): SpeechSynthesisUtterance {
 }
 
 /**
- * Voice session: Web Speech API → /api/chat → TTS. Japanese STT, English UI + TTS copy.
+ * Voice session: Web Speech API → /api/chat → TTS. English STT, UI, and spoken copy.
  */
 export function useVoiceConversation({
   active,
@@ -162,7 +162,7 @@ export function useVoiceConversation({
       thinking = true;
       setIsThinking(true);
       setIsListening(false);
-      setAiText(`「${finalText}」…`);
+      setAiText(`“${finalText}”…`);
 
       try {
         const res = await fetch("/api/chat", {
@@ -210,7 +210,7 @@ export function useVoiceConversation({
     };
 
     if (recognition) {
-      recognition.lang = "ja-JP";
+      recognition.lang = "en-US";
       recognition.continuous = false;
       recognition.interimResults = false;
 
@@ -227,7 +227,7 @@ export function useVoiceConversation({
         if (!segment) return;
 
         speechBuffer = speechBuffer ? `${speechBuffer} ${segment}` : segment;
-        setAiText(`「${speechBuffer}」`);
+        setAiText(`“${speechBuffer}”`);
         setIsListening(false);
 
         clearDebounce();

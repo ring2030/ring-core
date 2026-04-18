@@ -173,7 +173,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
 
     const recognition = new Ctor();
     recognitionRef.current = recognition;
-    recognition.lang = "ja-JP";
+    recognition.lang = "en-US";
     recognition.interimResults = true;
     recognition.continuous = true;
 

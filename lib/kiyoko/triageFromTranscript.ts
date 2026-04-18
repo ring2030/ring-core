@@ -1,4 +1,4 @@
-/** Rule-based triage from speech transcript (Japanese keyword matching). */
+/** Rule-based triage from speech (English + legacy Japanese keyword matching). */
 
 export type VoiceTriage = {
   urgency: "high" | "low";
@@ -22,7 +22,9 @@ export function triageFromTranscript(raw: string): VoiceTriage {
     };
   }
 
-  const highKeywords = [
+  const lower = text.toLowerCase();
+
+  const highKeywordsJa = [
     "痛い",
     "転んだ",
     "たおれた",
@@ -30,7 +32,23 @@ export function triageFromTranscript(raw: string): VoiceTriage {
     "助けて",
     "たすけて",
   ];
-  const lowKeywords = [
+  const highKeywordsEn = [
+    "hurt",
+    "pain",
+    "painful",
+    "fell",
+    "fall",
+    "fallen",
+    "help",
+    "emergency",
+    "can't breathe",
+    "cannot breathe",
+    "bleeding",
+    "chest pain",
+    "dizzy",
+  ];
+
+  const lowKeywordsJa = [
     "寂しい",
     "さみしい",
     "さびしい",
@@ -41,9 +59,25 @@ export function triageFromTranscript(raw: string): VoiceTriage {
     "はなしたい",
     "聞きたい",
   ];
+  const lowKeywordsEn = [
+    "lonely",
+    "loneliness",
+    "feel alone",
+    "so alone",
+    "scared",
+    "afraid",
+    "need company",
+    "want company",
+    "want to talk",
+    "miss you",
+  ];
 
-  const hitHigh = highKeywords.some((k) => text.includes(k));
-  const hitLow = lowKeywords.some((k) => text.includes(k));
+  const hitHigh =
+    highKeywordsJa.some((k) => text.includes(k)) ||
+    highKeywordsEn.some((k) => lower.includes(k));
+  const hitLow =
+    lowKeywordsJa.some((k) => text.includes(k)) ||
+    lowKeywordsEn.some((k) => lower.includes(k));
 
   const short = clip(text);
 
