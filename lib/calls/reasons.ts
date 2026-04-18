@@ -26,7 +26,7 @@ export const LEGACY_REASON_TO_EN: Record<string, string> = {
   寒い: "Cold",
   体位を変えて: "Reposition",
   その他: "Other",
-  お水・お茶: "Water / tea",
+  "お水・お茶": "Water / tea",
   "痛い・苦しい": "Pain / distress",
   "不安・さみしい": "Anxiety / loneliness",
   必要なし: "None needed",
