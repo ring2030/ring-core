@@ -359,8 +359,10 @@ export default function GrandmaGazePage() {
   }, []);
 
   useEffect(() => {
-    if (eyedidLicenseError) setIsCalibrating(false);
-  }, [eyedidLicenseError]);
+    if (eyedidLicenseError || eyedidInitError) {
+      handleGazeEngineChange(true); // auto-fallback to iris mode
+    }
+  }, [eyedidLicenseError, eyedidInitError, handleGazeEngineChange]);
 
   useEffect(() => {
     return () => {
@@ -576,9 +578,6 @@ export default function GrandmaGazePage() {
         <div className="flex h-full w-full flex-col items-center justify-center px-8">
           {sentReason === REASON_RESTROOM ? (
             <div className="motion-safe:animate-[kiyoko-success-reveal_0.5s_ease-out_both] rounded-[3.5rem] border-8 border-orange-500/50 bg-gradient-to-br from-orange-950/80 via-slate-900 to-slate-950 p-14 text-center shadow-[0_0_80px_rgba(251,146,60,0.15)] sm:p-22">
-              <div className="mb-6 text-[clamp(4rem,14vmin,8rem)] leading-none" aria-hidden>
-                🔔
-              </div>
               <h1 className="mb-5 text-[clamp(2rem,7.5vmin,5rem)] font-black leading-tight text-orange-300">
                 Calling
                 <br />

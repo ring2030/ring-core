@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { EyedidCalibrationUi } from "@/hooks/useEyedidGaze";
 
 /** SDK が点を送ってこなくなるまでの待機時間 */
-const CALIBRATION_DOT_TIMEOUT_MS = 15_000;
+const CALIBRATION_DOT_TIMEOUT_MS = 8_000;
 
 type Props = {
   calUi: EyedidCalibrationUi;

@@ -21,7 +21,10 @@ export type NurseAccountView = {
   updatedAt: string;
 };
 
-const STORE_DIR = path.join(process.cwd(), ".data");
+// Prefer /tmp (writable on Vercel/Lambda); fall back to local .data for dev
+const STORE_DIR = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+  ? "/tmp/.ring-data"
+  : path.join(process.cwd(), ".data");
 const STORE_FILE = path.join(STORE_DIR, "nurse-accounts.json");
 const DEFAULT_ID = "1";
 const DEFAULT_PASSWORD = "1";
@@ -58,7 +61,12 @@ async function readStore(): Promise<NurseAccountStore> {
         },
       ],
     };
-    await writeStore(initial);
+    // Best-effort persist; ignore write failures (e.g. read-only FS on Vercel)
+    try {
+      await writeStore(initial);
+    } catch {
+      /* ignore */
+    }
     return initial;
   }
 }
