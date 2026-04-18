@@ -234,7 +234,7 @@ export function useVoiceConversation({
         debounceTimer = setTimeout(() => {
           if (!mounted || !shouldContinueConversation || thinking) return;
 
-          const finalText = speechBuffer.replace(/\s+/g, "");
+          const finalText = speechBuffer.replace(/\s+/g, " ").trim();
           speechBuffer = "";
           clearDebounce();
 

@@ -12,6 +12,8 @@ type Props = {
   faceHint: string | null;
   /** Eyedid: waiting on camera */
   showCameraRestartHint: boolean;
+  /** Iris: loading model / camera (shown while !isReady) */
+  irisLoadingStatus?: string | null;
 };
 
 /**
@@ -23,6 +25,7 @@ export function GazeStatusBar({
   onUsePointerInstead,
   faceHint,
   showCameraRestartHint,
+  irisLoadingStatus,
 }: Props) {
   const hasError = Boolean(errorMessage);
 
@@ -84,6 +87,15 @@ export function GazeStatusBar({
           >
             Restart camera
           </button>
+        </div>
+      )}
+
+      {!hasError && !faceHint && !showCameraRestartHint && irisLoadingStatus && (
+        <div className="pointer-events-none fixed top-0 left-0 right-0 z-[9998] flex justify-center px-3 pt-14 sm:pt-16">
+          <p className="flex items-center gap-2.5 rounded-full border border-cyan-500/20 bg-cyan-950/80 px-5 py-2 text-sm font-medium text-cyan-100/90 shadow-lg backdrop-blur-md">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-cyan-400 animate-pulse" aria-hidden />
+            {irisLoadingStatus}
+          </p>
         </div>
       )}
     </>

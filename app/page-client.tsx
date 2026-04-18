@@ -320,6 +320,7 @@ export default function GrandmaGazePage() {
     faceDetected: irisFaceDetected,
     isReady: state_irisReady,
     error: irisError,
+    initStatus: irisInitStatus,
   } = useIrisGaze({
     enabled: irisEnabled,
     restartKey: irisRestartKey,
@@ -487,6 +488,11 @@ export default function GrandmaGazePage() {
       !gazeMode &&
       (statusMessage.includes("Preparing camera") || statusMessage.includes("Preparing")));
 
+  const irisLoadingStatus =
+    irisEnabled && !state_irisReady && !combinedError && irisInitStatus
+      ? irisInitStatus
+      : null;
+
   if (!gazeHydrated) {
     return (
       <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
@@ -554,13 +560,13 @@ export default function GrandmaGazePage() {
         />
       )}
 
-      {!isSuccess && !isCalibrating && (
+      {!isSuccess && !isCalibrating &&
+        ((irisUiActive && irisFaceDetected) || (!irisUiActive && gazePoint.x > 0)) && (
         <div
           className="pointer-events-none fixed h-48 w-48 animate-pulse rounded-full bg-amber-300/35 mix-blend-screen blur-2xl transition-all duration-100"
           style={{
             left: displayGazeX - 96,
             top: displayGazeY - 96,
-            display: displayGazeX > 0 ? "block" : "none",
             zIndex: 9999,
           }}
         />
@@ -569,14 +575,19 @@ export default function GrandmaGazePage() {
       {isSuccess ? (
         <div className="flex h-full w-full flex-col items-center justify-center px-8">
           {sentReason === REASON_RESTROOM ? (
-            <div className="rounded-[4rem] border-8 border-orange-600/45 bg-gradient-to-br from-slate-900 to-slate-950 p-16 text-center shadow-2xl sm:p-24">
-              <h1 className="mb-8 text-[clamp(2rem,8vmin,5rem)] font-black leading-tight text-orange-300">
+            <div className="motion-safe:animate-[kiyoko-success-reveal_0.5s_ease-out_both] rounded-[3.5rem] border-8 border-orange-500/50 bg-gradient-to-br from-orange-950/80 via-slate-900 to-slate-950 p-14 text-center shadow-[0_0_80px_rgba(251,146,60,0.15)] sm:p-22">
+              <div className="mb-6 text-[clamp(4rem,14vmin,8rem)] leading-none" aria-hidden>
+                🔔
+              </div>
+              <h1 className="mb-5 text-[clamp(2rem,7.5vmin,5rem)] font-black leading-tight text-orange-300">
                 Calling
                 <br />
                 your nurse
               </h1>
-              <p className="text-[clamp(1.1rem,3.5vmin,2.5rem)] font-bold text-slate-300">
-                We’ve notified them. Please wait comfortably.
+              <p className="text-[clamp(1rem,3.2vmin,2rem)] font-semibold leading-relaxed text-slate-300/90">
+                We’ve notified them.
+                <br />
+                Please wait comfortably.
               </p>
             </div>
           ) : (
@@ -616,6 +627,7 @@ export default function GrandmaGazePage() {
             onUsePointerInstead={() => handleInputModeChange("pointer")}
             faceHint={faceHint}
             showCameraRestartHint={showCameraRestartHint}
+            irisLoadingStatus={irisLoadingStatus}
           />
 
           <GazeTargetPanel target={displayTarget} progress={displayProgress} />

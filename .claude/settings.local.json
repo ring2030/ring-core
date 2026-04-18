@@ -33,7 +33,10 @@
       "Bash(cmd /c \"python -c \\\\\"from pptx import Presentation; print\\('pptx ok'\\)\\\\\"\")",
       "Bash(npm list:*)",
       "Bash(npm install:*)",
-      "Bash(cmd:*)"
+      "Bash(cmd:*)",
+      "Bash(xargs wc *)",
+      "Bash(npx eslint *)",
+      "Bash(npx vitest *)"
     ]
   }
 }
