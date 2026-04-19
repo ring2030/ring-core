@@ -73,7 +73,10 @@ export default function GrandmaGazePage() {
   useEffect(() => {
     const mode = getStoredInputMode();
     const engine = getStoredGazeEngine();
-    const useIris = engine === "iris";
+    // dev_ keys are localhost-only; on any other host (e.g. Vercel) force iris
+    const eyedidKey = process.env.NEXT_PUBLIC_EYEDID_LICENSE_KEY ?? "";
+    const eyedidUsable = eyedidKey.length > 0 && !eyedidKey.startsWith("dev_");
+    const useIris = engine !== "eyedid" || !eyedidUsable;
     setInputMode(mode);
     setGazeMode(useIris);
     setGazeTuning(loadGazeTuning());
