@@ -33,20 +33,42 @@ export interface CameraDevice {
   label: string;
 }
 
-type FaceKp = { x: number; y: number; name?: string };
-type FaceBox = { xMin: number; yMin: number; width: number; height: number };
-type DetectedFace = { box: FaceBox; keypoints: FaceKp[] };
+/** Normalized MediaPipe FaceDetection result */
+type MPDetection = {
+  boundingBox: { xCenter: number; yCenter: number; width: number; height: number };
+  landmarks: { x: number; y: number }[];
+};
+
+/** Load @mediapipe/face_detection script from self-hosted WASM files */
+function loadFaceDetectionScript(): Promise<void> {
+  if ((window as unknown as Record<string, unknown>).FaceDetection) return Promise.resolve();
+  return new Promise<void>((resolve, reject) => {
+    const existing = document.querySelector('script[src*="face_detection.js"]');
+    if (existing) {
+      existing.addEventListener("load", () => resolve());
+      existing.addEventListener("error", () => reject(new Error("face_detection.js load error")));
+      return;
+    }
+    const script = document.createElement("script");
+    script.src = "/@mediapipe/face_detection/face_detection.js";
+    script.crossOrigin = "anonymous";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load /@mediapipe/face_detection/face_detection.js"));
+    document.head.appendChild(script);
+  });
+}
 
 /**
- * Compute gaze X from face-detection result.
- * flipHorizontal:true → looking right gives larger noseTip.x (user perspective).
+ * Compute gaze X from MediaPipe face detection result.
+ * selfieMode:true → looking right gives larger noseTip.x (user perspective).
+ * All coordinates are normalized (0–1).
  */
-function calcGazeX(face: DetectedFace): number | null {
-  const noseTip = face.keypoints.find((k) => k.name === "noseTip") ?? face.keypoints[2];
+function calcGazeX(det: MPDetection): number | null {
+  const noseTip = det.landmarks[2]; // index 2 = noseTip
   if (!noseTip) return null;
-  const faceCenter = face.box.xMin + face.box.width / 2;
-  if (face.box.width < 20) return null;
-  const offset = (noseTip.x - faceCenter) / (face.box.width * 0.35);
+  const bb = det.boundingBox;
+  if (bb.width < 0.01) return null; // face too small
+  const offset = (noseTip.x - bb.xCenter) / (bb.width * 0.35);
   return Math.max(-1, Math.min(1, offset));
 }
 
@@ -59,25 +81,30 @@ function zoneFromGaze(gazeX: number | null, threshold: number): GazeZone {
 
 function drawDebug(
   dbgCtx: CanvasRenderingContext2D,
-  src: HTMLCanvasElement,
-  face: DetectedFace | null,
-  videoWidth: number,
+  src: HTMLVideoElement,
+  det: MPDetection | null,
 ) {
+  const W = src.videoWidth;
+  const H = src.videoHeight;
   dbgCtx.save();
-  dbgCtx.translate(videoWidth, 0);
+  dbgCtx.translate(W, 0);
   dbgCtx.scale(-1, 1);
   dbgCtx.drawImage(src, 0, 0);
   dbgCtx.restore();
-  if (!face) return;
+  if (!det) return;
+  const bb = det.boundingBox;
+  const xMin = (bb.xCenter - bb.width / 2) * W;
+  const yMin = (bb.yCenter - bb.height / 2) * H;
   dbgCtx.strokeStyle = "#00ff00";
   dbgCtx.lineWidth = 2;
-  dbgCtx.strokeRect(face.box.xMin, face.box.yMin, face.box.width, face.box.height);
-  for (const kp of face.keypoints) {
-    dbgCtx.fillStyle = kp.name === "noseTip" ? "#ff3333" : "#ffff00";
+  dbgCtx.strokeRect(xMin, yMin, bb.width * W, bb.height * H);
+  det.landmarks.forEach((kp, i) => {
+    const isNose = i === 2;
+    dbgCtx.fillStyle = isNose ? "#ff3333" : "#ffff00";
     dbgCtx.beginPath();
-    dbgCtx.arc(kp.x, kp.y, kp.name === "noseTip" ? 6 : 3, 0, Math.PI * 2);
+    dbgCtx.arc(kp.x * W, kp.y * H, isNose ? 6 : 3, 0, Math.PI * 2);
     dbgCtx.fill();
-  }
+  });
 }
 
 const FACE_LOST_RESET_MS = 300;
@@ -117,7 +144,6 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
   const lastActivityAtRef = useRef(0);
   const lastTsRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const modelCanvasRef = useRef<HTMLCanvasElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const detectorRef = useRef<any>(null);
   const rafRef = useRef<number | null>(null);
@@ -150,11 +176,10 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    try { detectorRef.current?.dispose(); } catch { /* ignore */ }
+    try { detectorRef.current?.close(); } catch { /* ignore */ }
     detectorRef.current = null;
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
     streamRef.current = null;
-    modelCanvasRef.current = null;
     sendingRef.current = false;
     lastTsRef.current = null;
     faceLostAtRef.current = null;
@@ -181,37 +206,45 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       setState((s) => ({ ...s, error: null, isReady: false }));
 
       try {
-        // Step 1: TF.js WebGL backend
-        setInitStatus("Initializing TF.js WebGL…");
-        const tf = await import("@tensorflow/tfjs-core");
-        await import("@tensorflow/tfjs-backend-webgl");
-        try {
-          await tf.setBackend("webgl");
-        } catch {
-          await tf.setBackend("cpu");
-        }
-        await tf.ready();
+        // Step 1: Load MediaPipe face_detection script from self-hosted WASM files
+        setInitStatus("Loading face detection model…");
+        await loadFaceDetectionScript();
         if (localCancel || cancelledRef.current) return;
 
-        // Step 2: Load face detection model
-        setInitStatus("Loading face model… (first load may take a while)");
-        const faceDetection = await import("@tensorflow-models/face-detection");
-        const detector = await faceDetection.createDetector(
-          faceDetection.SupportedModels.MediaPipeFaceDetector,
-          {
-            runtime: "tfjs" as const,
-            modelType: "short" as const,
-            maxFaces: 1,
-          },
-        );
+        // Step 2: Create detector using window.FaceDetection (set by the script)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const FDClass = (window as unknown as { FaceDetection: new(cfg: unknown) => any }).FaceDetection;
+        if (!FDClass) throw new Error("FaceDetection class not found after script load");
+
+        const detector = new FDClass({
+          locateFile: (file: string) => `/@mediapipe/face_detection/${file}`,
+        });
+
+        // Store latest results from callback
+        let latestDetection: MPDetection | null = null;
+        let resultReady = false;
+
+        detector.setOptions({
+          model: "short",
+          selfieMode: true,
+          minDetectionConfidence: 0.5,
+        });
+
+        detector.onResults((results: { detections: MPDetection[] }) => {
+          latestDetection = results.detections?.[0] ?? null;
+          resultReady = true;
+        });
+
+        setInitStatus("Initializing model…");
+        await detector.initialize();
         if (localCancel || cancelledRef.current) {
-          detector.dispose();
+          detector.close();
           return;
         }
         detectorRef.current = detector;
-        setInitStatus("Model ready. Starting camera…");
 
         // Step 3: Open camera
+        setInitStatus("Starting camera…");
         const videoConstraints: MediaTrackConstraints = cameraDeviceId
           ? { deviceId: { exact: cameraDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
           : { width: { ideal: 640 }, height: { ideal: 480 } };
@@ -228,7 +261,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
-          detector.dispose();
+          detector.close();
           return;
         }
         streamRef.current = stream;
@@ -246,7 +279,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         if (!video) {
           stream.getTracks().forEach((t) => t.stop());
-          detector.dispose();
+          detector.close();
           if (!localCancel && !cancelledRef.current) {
             setState((s) => ({ ...s, error: "Video element not ready. Reload the page.", isReady: false }));
           }
@@ -259,16 +292,12 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         await video.play().catch(() => {});
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
-          detector.dispose();
+          detector.close();
           return;
         }
 
         setInitStatus("");
         setState((s) => ({ ...s, isReady: true, error: null }));
-
-        if (!modelCanvasRef.current) {
-          modelCanvasRef.current = document.createElement("canvas");
-        }
 
         let diagCounter = 0;
 
@@ -282,35 +311,17 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           if (sendingRef.current) return;
           if (vid.videoWidth === 0) return;
 
-          const cvs = modelCanvasRef.current!;
-          if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
-            cvs.width = vid.videoWidth;
-            cvs.height = vid.videoHeight;
-          }
-          const ctx = cvs.getContext("2d");
-          if (!ctx) return;
-          try { ctx.drawImage(vid, 0, 0); } catch { return; }
-
           if (diagCounter++ % 30 === 0) {
-            let brightness = -1;
-            try {
-              const sx = Math.floor(cvs.width / 2) - 16;
-              const sy = Math.floor(cvs.height / 2) - 16;
-              const px = ctx.getImageData(sx, sy, 32, 32);
-              brightness = Math.round(
-                Array.from(px.data).reduce((s, v, i) => (i % 4 === 3 ? s : s + v), 0) / (32 * 32 * 3),
-              );
-            } catch { /* ignore */ }
-            setVideoSize({ w: vid.videoWidth, h: vid.videoHeight, paused: vid.paused, brightness });
+            setVideoSize({ w: vid.videoWidth, h: vid.videoHeight, paused: vid.paused, brightness: -1 });
             if (vid.paused) { vid.play().catch(() => {}); }
           }
 
-          const videoWidth = vid.videoWidth;
           sendingRef.current = true;
+          resultReady = false;
           setFrameCount((n) => n + 1);
 
-          (det.estimateFaces(cvs, { flipHorizontal: true }) as Promise<DetectedFace[]>)
-            .then((faces) => {
+          (det.send({ image: vid }) as Promise<void>)
+            .then(() => {
               if (localCancel || cancelledRef.current) return;
               setResultCount((n) => n + 1);
 
@@ -319,18 +330,18 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
               const dt = Math.min(Math.max(now - last, 0), 100);
               lastTsRef.current = now;
 
-              const face = faces[0] ?? null;
-              const kpCount = face ? face.keypoints.length : -1;
+              const face = latestDetection;
+              const kpCount = face ? face.landmarks.length : -1;
               setKpLen(kpCount);
 
               const dbgCvs = debugCanvasRef?.current;
-              if (dbgCvs) {
-                if (dbgCvs.width !== videoWidth || dbgCvs.height !== vid.videoHeight) {
-                  dbgCvs.width = videoWidth;
+              if (dbgCvs && vid) {
+                if (dbgCvs.width !== vid.videoWidth || dbgCvs.height !== vid.videoHeight) {
+                  dbgCvs.width = vid.videoWidth;
                   dbgCvs.height = vid.videoHeight;
                 }
                 const dbgCtx = dbgCvs.getContext("2d");
-                if (dbgCtx) drawDebug(dbgCtx, cvs, face, videoWidth);
+                if (dbgCtx) drawDebug(dbgCtx, vid, face);
               }
 
               const gx = face ? calcGazeX(face) : null;
@@ -395,7 +406,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
             })
             .catch((e: unknown) => {
               const msg = e instanceof Error ? e.message : String(e);
-              console.error("[useIrisGaze] estimateFaces error:", msg);
+              console.error("[useIrisGaze] send error:", msg);
               setState((s) => ({ ...s, error: `Detection error: ${msg.slice(0, 120)}` }));
             })
             .finally(() => { sendingRef.current = false; });

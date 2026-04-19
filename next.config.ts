@@ -54,6 +54,18 @@ const nextConfig: NextConfig = {
           { key: "Content-Type", value: "application/octet-stream" },
         ],
       },
+      {
+        source: "/:path*.binarypb",
+        headers: [
+          { key: "Content-Type", value: "application/octet-stream" },
+        ],
+      },
+      {
+        source: "/:path*.tflite",
+        headers: [
+          { key: "Content-Type", value: "application/octet-stream" },
+        ],
+      },
     ];
   },
 };

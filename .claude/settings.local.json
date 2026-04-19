@@ -37,7 +37,24 @@
       "Bash(xargs wc *)",
       "Bash(npx eslint *)",
       "Bash(npx vitest *)",
-      "Bash(ls C:\\\\Users\\\\user\\\\Desktop\\\\ring-core\\\\next.config*)"
+      "Bash(ls C:\\\\Users\\\\user\\\\Desktop\\\\ring-core\\\\next.config*)",
+      "Bash(curl -s --max-time 10 \"https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1/model.json\" -o /tmp/test_model.json)",
+      "Bash(curl -sL --max-time 15 \"https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1/model.json\")",
+      "Bash(curl -sIL --max-time 10 \"https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1\")",
+      "Bash(curl -sIL --max-time 10 \"https://storage.googleapis.com/tfjs-models/tfjs/face_detection/short/model.json\")",
+      "Bash(curl -sIL --max-time 10 \"https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/face_detector.tflite\")",
+      "Bash(curl -sIL --max-time 10 \"https://kaggle.com/models/mediapipe/face-detection/tfJs/short/1\")",
+      "Bash(curl -sIL --max-time 10 \"https://www.kaggle.com/models/mediapipe/face-detection/tfJs/short/1/model.json\")",
+      "Bash(curl -sIL --max-time 10 \"https://storage.googleapis.com/tfjs-models/savedmodel/mobilenet_v2_1.0_224/model.json\")",
+      "Bash(curl -sIL --max-time 10 \"https://storage.googleapis.com/mediapipe-assets/face_detection_short_range.tflite\")",
+      "Bash(curl -sIL --max-time 10 \"https://www.kaggle.com/models/mediapipe/face-detection/TfJs/short/1\")",
+      "Bash(xargs grep *)",
+      "Bash(ls C:/Users/user/Desktop/ring-core/lib/mediapipe*)",
+      "Bash(curl -sIL --max-time 15 \"https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1\")",
+      "Bash(curl -s --max-time 15 \"https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1?tf-hub-format=compressed\" -o /tmp/model_test.bin)",
+      "Read(//tmp/**)",
+      "Bash(npm show *)",
+      "Bash(ls C:/Users/user/Desktop/ring-core/public/@mediapipe/face_detection/*.data)"
     ]
   }
 }
