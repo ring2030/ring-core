@@ -24,9 +24,9 @@ export interface UseIrisGazeOptions {
   onActivity?: () => void;
   enabled?: boolean;
   restartKey?: number;
-  /** Debug: draw detected landmarks on this canvas (development only) */
+  /** Debug canvas — draw detected landmarks (dev only) */
   debugCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
-  /** Camera deviceId to use (undefined = browser default) */
+  /** Camera deviceId (undefined = browser default) */
   cameraDeviceId?: string;
 }
 
@@ -35,56 +35,74 @@ export interface CameraDevice {
   label: string;
 }
 
-type FaceKp = { x: number; y: number; z?: number; name?: string };
-type FaceBox = { xMin: number; yMin: number; width: number; height: number };
-type DetectedFaceMesh = { box: FaceBox; keypoints: FaceKp[] };
+// MediaPipe FaceMesh landmark indices (normalised 0–1 coords)
+const LM = {
+  NOSE_TIP:   1,
+  LEFT_IRIS:  468,
+  RIGHT_IRIS: 473,
+  FACE_LEFT:  234,
+  FACE_RIGHT: 454,
+} as const;
+
+interface FaceMeshResult {
+  multiFaceLandmarks?: Array<Array<{ x: number; y: number; z: number }>>;
+}
+interface FaceMeshInstance {
+  setOptions(opts: Record<string, unknown>): void;
+  onResults(cb: (r: FaceMeshResult) => void): void;
+  send(input: { image: HTMLVideoElement | HTMLCanvasElement }): Promise<void>;
+  close(): void;
+}
+interface FaceMeshCtor {
+  new (config: { locateFile: (f: string) => string }): FaceMeshInstance;
+}
 
 /**
- * Iris-based gaze X using MediaPipe FaceMesh (refineLandmarks: true → 478 keypoints).
- *
- * Iris landmarks:
- *   Left iris rim:  468, 469, 470, 471
- *   Right iris rim: 472, 473, 474, 475
- *
- * Eye corner landmarks (after flipHorizontal: true — selfie / user perspective):
- *   Face "left" eye outer: 33  (user's left, lower x in flipped image)
- *   Face "left" eye inner: 133 (toward nose, higher x)
- *   Face "right" eye inner: 362 (toward nose, lower x)
- *   Face "right" eye outer: 263 (user's right, higher x)
- *
- * Returns -1 (looking left = Restroom) … +1 (looking right = Chat).
+ * Load public/@mediapipe/face_mesh/face_mesh.js once, establishing window.FaceMesh.
+ * A data attribute guards against double-loading.
  */
-function calcIrisGazeX(keypoints: FaceKp[]): number | null {
-  if (keypoints.length < 476) return null;
+function loadFaceMeshScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector("script[data-mp-fm]")) { resolve(); return; }
+    const s = document.createElement("script");
+    s.setAttribute("data-mp-fm", "1");
+    s.src = "/@mediapipe/face_mesh/face_mesh.js";
+    s.onload  = () => resolve();
+    s.onerror = () => reject(new Error(
+      "Failed to load face_mesh.js. Check public/@mediapipe/face_mesh/ exists.",
+    ));
+    document.head.appendChild(s);
+  });
+}
 
-  // Iris centers (centroid of 4 rim points each)
-  const lIrisX =
-    (keypoints[468].x + keypoints[469].x + keypoints[470].x + keypoints[471].x) / 4;
-  const rIrisX =
-    (keypoints[472].x + keypoints[473].x + keypoints[474].x + keypoints[475].x) / 4;
+function getFaceMeshCtor(): FaceMeshCtor | null {
+  return (window as unknown as { FaceMesh?: FaceMeshCtor }).FaceMesh ?? null;
+}
 
-  // Eye horizontal extent
-  const lLeft  = Math.min(keypoints[33].x,  keypoints[133].x);
-  const lRight = Math.max(keypoints[33].x,  keypoints[133].x);
-  const rLeft  = Math.min(keypoints[362].x, keypoints[263].x);
-  const rRight = Math.max(keypoints[362].x, keypoints[263].x);
+/**
+ * Compute gaze X from MediaPipe normalised landmarks.
+ * selfieMode:true → looking right gives higher x.
+ *
+ * If 478 keypoints are available (refineLandmarks:true):  iris-based (accurate).
+ * Otherwise falls back to head-pose proxy (nose vs face centre).
+ *
+ * Returns −1 (looking left = Restroom) … +1 (looking right = Chat).
+ */
+function calcGazeX(kp: Array<{ x: number; y: number }>): number | null {
+  if (kp.length < 468) return null;
+  const faceW = Math.abs(kp[LM.FACE_RIGHT].x - kp[LM.FACE_LEFT].x);
+  if (faceW < 0.02) return null; // face too small / too far
 
-  const lWidth = lRight - lLeft;
-  const rWidth = rRight - rLeft;
-
-  const lOk = lWidth > 5;
-  const rOk = rWidth > 5;
-  if (!lOk && !rOk) return null;
-
-  // Normalise iris within eye: 0 = leftmost, 1 = rightmost
-  const norms: number[] = [];
-  if (lOk) norms.push((lIrisX - lLeft) / lWidth);
-  if (rOk) norms.push((rIrisX - rLeft) / rWidth);
-
-  const avg = norms.reduce((a, b) => a + b, 0) / norms.length;
-  // Centre at 0, scale ±0.5 → ±1
-  const gazeX = (avg - 0.5) * 2;
-  return Math.max(-1, Math.min(1, gazeX));
+  if (kp.length >= 478) {
+    // Iris-based (high accuracy)
+    const avgIrisX = (kp[LM.LEFT_IRIS].x + kp[LM.RIGHT_IRIS].x) / 2;
+    const offset = (avgIrisX - kp[LM.NOSE_TIP].x) / (faceW * 0.25);
+    return Math.max(-1, Math.min(1, offset));
+  }
+  // Head-pose fallback
+  const faceCenterX = (kp[LM.FACE_LEFT].x + kp[LM.FACE_RIGHT].x) / 2;
+  const offset = (kp[LM.NOSE_TIP].x - faceCenterX) / (faceW * 0.35);
+  return Math.max(-1, Math.min(1, offset));
 }
 
 function zoneFromGaze(gazeX: number | null, threshold: number): GazeZone {
@@ -98,45 +116,38 @@ const FACE_LOST_RESET_MS = 300;
 
 export function useIrisGaze(options: UseIrisGazeOptions) {
   const {
-    dwellMs = 3500,
-    threshold = 0.12,
+    dwellMs    = 3500,
+    threshold  = 0.12,
     onLeftSelect,
     onRightSelect,
     onActivity,
-    enabled = true,
+    enabled    = true,
     restartKey = 0,
-    debugCanvasRef,
     cameraDeviceId,
   } = options;
 
-  const dwellMsRef    = useRef(dwellMs);
-  dwellMsRef.current  = dwellMs;
-  const thresholdRef  = useRef(threshold);
+  const dwellMsRef   = useRef(dwellMs);
+  dwellMsRef.current = dwellMs;
+  const thresholdRef   = useRef(threshold);
   thresholdRef.current = threshold;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [state, setState] = useState<IrisGazeState>({
-    zone: "none",
-    leftProgress: 0,
-    rightProgress: 0,
-    gazeX: 0,
-    faceDetected: false,
-    isReady: false,
-    error: null,
+    zone: "none", leftProgress: 0, rightProgress: 0,
+    gazeX: 0, faceDetected: false, isReady: false, error: null,
   });
 
-  const dLeftRef           = useRef(0);
-  const dRightRef          = useRef(0);
-  const faceLostAtRef      = useRef<number | null>(null);
-  const lastActivityAtRef  = useRef(0);
-  const lastTsRef          = useRef<number | null>(null);
-  const streamRef          = useRef<MediaStream | null>(null);
-  const modelCanvasRef     = useRef<HTMLCanvasElement | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const detectorRef        = useRef<any>(null);
-  const rafRef             = useRef<number | null>(null);
-  const cancelledRef       = useRef(false);
-  const sendingRef         = useRef(false);
+  const dLeftRef          = useRef(0);
+  const dRightRef         = useRef(0);
+  const faceLostAtRef     = useRef<number | null>(null);
+  const lastActivityAtRef = useRef(0);
+  const lastTsRef         = useRef<number | null>(null);
+  const streamRef         = useRef<MediaStream | null>(null);
+  const canvasRef         = useRef<HTMLCanvasElement | null>(null);
+  const faceMeshRef       = useRef<FaceMeshInstance | null>(null);
+  const rafRef            = useRef<number | null>(null);
+  const cancelledRef      = useRef(false);
+  const sendingRef        = useRef(false);
 
   const [frameCount,  setFrameCount]  = useState(0);
   const [resultCount, setResultCount] = useState(0);
@@ -164,16 +175,16 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
-    try { detectorRef.current?.dispose(); } catch { /* ignore */ }
-    detectorRef.current = null;
+    try { faceMeshRef.current?.close(); } catch { /* ignore */ }
+    faceMeshRef.current = null;
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
-    streamRef.current    = null;
-    modelCanvasRef.current = null;
+    streamRef.current = null;
+    canvasRef.current = null;
     sendingRef.current   = false;
     lastTsRef.current    = null;
     faceLostAtRef.current = null;
-    dLeftRef.current     = 0;
-    dRightRef.current    = 0;
+    dLeftRef.current  = 0;
+    dRightRef.current = 0;
   }, []);
 
   useEffect(() => {
@@ -195,35 +206,111 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       setState((s) => ({ ...s, error: null, isReady: false }));
 
       try {
-        // ── Step 1: Load MediaPipe FaceMesh detector (self-hosted WASM) ──
+        // ── 1. Load face_mesh.js (self-hosted at public/@mediapipe/face_mesh/) ──
         setInitStatus("Loading face model…");
-        const faceLandmarks = await import("@tensorflow-models/face-landmarks-detection");
+        await loadFaceMeshScript();
         if (localCancel || cancelledRef.current) return;
 
-        const detector = await faceLandmarks.createDetector(
-          faceLandmarks.SupportedModels.MediaPipeFaceMesh,
-          {
-            runtime: "mediapipe" as const,
-            // WASM files are self-hosted under public/@mediapipe/face_mesh/
-            solutionPath: "/@mediapipe/face_mesh",
-            refineLandmarks: true,  // enables iris landmarks 468-477
-            maxFaces: 1,
-          },
-        );
-        if (localCancel || cancelledRef.current) {
-          detector.dispose();
-          return;
+        const FaceMeshCtor = getFaceMeshCtor();
+        if (!FaceMeshCtor) {
+          throw new Error("window.FaceMesh not found. Reload the page.");
         }
-        detectorRef.current = detector;
-        setInitStatus("Model ready. Starting camera…");
 
-        // ── Step 2: Open camera ──
+        // ── 2. Create FaceMesh instance ──
+        const fm = new FaceMeshCtor({
+          locateFile: (file: string) => `/@mediapipe/face_mesh/${file}`,
+        });
+        fm.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: false,        // 468-point model — fast & reliable
+          selfieMode: true,              // x coords already in user's perspective
+          minDetectionConfidence: 0.2,
+          minTrackingConfidence: 0.2,
+        });
+        faceMeshRef.current = fm;
+
+        // ── 3. Register results callback ──
+        fm.onResults((results: FaceMeshResult) => {
+          if (localCancel || cancelledRef.current) return;
+          setResultCount((n) => n + 1);
+
+          const now  = performance.now();
+          const last = lastTsRef.current ?? now;
+          const dt   = Math.min(Math.max(now - last, 0), 100);
+          lastTsRef.current = now;
+
+          const kp       = results.multiFaceLandmarks?.[0];
+          const kpCount  = kp ? kp.length : -1;
+          setKpLen(kpCount);
+
+          const gx               = kp ? calcGazeX(kp) : null;
+          const faceMeshDetected = kpCount > 0;
+          const valid            = gx !== null;
+
+          let zone: GazeZone = "none";
+          let gazeXVal   = 0;
+          let faceDetected = false;
+
+          if (!faceMeshDetected) {
+            if (faceLostAtRef.current === null) faceLostAtRef.current = now;
+            const lostMs = now - faceLostAtRef.current;
+            if (lostMs < FACE_LOST_RESET_MS) zone = "center";
+            else { dLeftRef.current = 0; dRightRef.current = 0; }
+          } else {
+            faceLostAtRef.current = null;
+            faceDetected = true;
+            if (valid) {
+              gazeXVal = gx!;
+              zone = zoneFromGaze(gx, thresholdRef.current);
+              bumpActivity();
+            } else {
+              zone = "center";
+            }
+          }
+
+          const d = dwellMsRef.current;
+          if (zone === "left") {
+            dLeftRef.current  = Math.min(d, dLeftRef.current + dt);
+            dRightRef.current = Math.max(0, dRightRef.current - dt * 2);
+          } else if (zone === "right") {
+            dRightRef.current = Math.min(d, dRightRef.current + dt);
+            dLeftRef.current  = Math.max(0, dLeftRef.current - dt * 2);
+          } else if (zone === "center") {
+            dLeftRef.current  = Math.max(0, dLeftRef.current  - dt * 0.6);
+            dRightRef.current = Math.max(0, dRightRef.current - dt * 0.6);
+          }
+          dLeftRef.current  = Math.min(d, Math.max(0, dLeftRef.current));
+          dRightRef.current = Math.min(d, Math.max(0, dRightRef.current));
+
+          if (dLeftRef.current >= d) {
+            onLeftRef.current?.();
+            dLeftRef.current  = 0;
+            dRightRef.current = 0;
+          } else if (dRightRef.current >= d) {
+            onRightRef.current?.();
+            dLeftRef.current  = 0;
+            dRightRef.current = 0;
+          }
+
+          setState({
+            zone,
+            leftProgress:  d > 0 ? dLeftRef.current  / d : 0,
+            rightProgress: d > 0 ? dRightRef.current / d : 0,
+            gazeX: gazeXVal,
+            faceDetected,
+            isReady: true,
+            error: null,
+          });
+        });
+
+        // ── 4. Open camera ──
+        setInitStatus("Starting camera…");
         const videoConstraints: MediaTrackConstraints = cameraDeviceId
           ? { deviceId: { exact: cameraDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
-          : { width: { ideal: 640 }, height: { ideal: 480 } };
+          : { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } };
         const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
 
-        // Enumerate cameras (label available after getUserMedia)
+        // Enumerate cameras (labels available after getUserMedia)
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
           setCameras(
@@ -235,12 +322,12 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
-          detector.dispose();
+          fm.close();
           return;
         }
         streamRef.current = stream;
 
-        // ── Step 3: Wait for videoRef to appear in the DOM (up to 5s) ──
+        // ── 5. Wait for videoRef to mount (up to 5s) ──
         const video = await (async () => {
           const t0 = performance.now();
           while (performance.now() - t0 < 5000) {
@@ -253,63 +340,62 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         if (!video) {
           stream.getTracks().forEach((t) => t.stop());
-          detector.dispose();
+          fm.close();
           if (!localCancel && !cancelledRef.current) {
             setState((s) => ({ ...s, error: "Video element not ready. Reload the page.", isReady: false }));
           }
           return;
         }
 
-        video.srcObject  = stream;
-        video.muted      = true;
+        video.srcObject   = stream;
+        video.muted       = true;
         video.playsInline = true;
         await video.play().catch(() => {});
+
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
-          detector.dispose();
+          fm.close();
           return;
         }
 
         setInitStatus("");
         setState((s) => ({ ...s, isReady: true, error: null }));
 
-        if (!modelCanvasRef.current) {
-          modelCanvasRef.current = document.createElement("canvas");
+        if (!canvasRef.current) {
+          canvasRef.current = document.createElement("canvas");
         }
 
+        // ── 6. RAF loop: send each frame to FaceMesh ──
         let diagCounter = 0;
-
-        // ── Step 4: Detection loop ──
         const runLoop = () => {
           if (localCancel || cancelledRef.current) return;
           rafRef.current = requestAnimationFrame(runLoop);
 
-          const vid = videoRef.current;
-          const det = detectorRef.current;
-          if (!vid || !det || vid.readyState < 2) return;
-          if (sendingRef.current) return;
+          const vid  = videoRef.current;
+          const mesh = faceMeshRef.current;
+          if (!vid || !mesh || vid.readyState < 2) return;
+          if (sendingRef.current) return; // previous frame still processing
           if (vid.videoWidth === 0) return;
-
-          // Snapshot video frame onto offscreen canvas
-          const cvs = modelCanvasRef.current!;
-          if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
-            cvs.width  = vid.videoWidth;
-            cvs.height = vid.videoHeight;
-          }
-          const ctx = cvs.getContext("2d");
-          if (!ctx) return;
-          try { ctx.drawImage(vid, 0, 0); } catch { return; }
 
           // Diagnostics every 30 frames
           if (diagCounter++ % 30 === 0) {
             let brightness = -1;
             try {
-              const sx = Math.floor(cvs.width / 2) - 16;
-              const sy = Math.floor(cvs.height / 2) - 16;
-              const px = ctx.getImageData(sx, sy, 32, 32);
-              brightness = Math.round(
-                Array.from(px.data).reduce((s, v, i) => (i % 4 === 3 ? s : s + v), 0) / (32 * 32 * 3),
-              );
+              const cvs = canvasRef.current!;
+              if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
+                cvs.width  = vid.videoWidth;
+                cvs.height = vid.videoHeight;
+              }
+              const ctx2 = cvs.getContext("2d");
+              if (ctx2) {
+                ctx2.drawImage(vid, 0, 0);
+                const px = ctx2.getImageData(
+                  Math.floor(cvs.width / 2) - 2, Math.floor(cvs.height / 2) - 2, 4, 4,
+                );
+                brightness = Math.round(
+                  Array.from(px.data).reduce((s, v, i) => (i % 4 === 3 ? s : s + v), 0) / (4 * 4 * 3),
+                );
+              }
             } catch { /* ignore */ }
             setVideoSize({ w: vid.videoWidth, h: vid.videoHeight, paused: vid.paused, brightness });
             if (vid.paused) { vid.play().catch(() => {}); }
@@ -317,116 +403,11 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
           sendingRef.current = true;
           setFrameCount((n) => n + 1);
-
-          // Estimate face landmarks with iris (flipHorizontal: true = selfie / user perspective)
-          (det.estimateFaces(cvs, { flipHorizontal: true }) as Promise<DetectedFaceMesh[]>)
-            .then((faces) => {
-              if (localCancel || cancelledRef.current) return;
-              setResultCount((n) => n + 1);
-
-              const now  = performance.now();
-              const last = lastTsRef.current ?? now;
-              const dt   = Math.min(Math.max(now - last, 0), 100);
-              lastTsRef.current = now;
-
-              const face    = faces[0] ?? null;
-              const kpCount = face ? face.keypoints.length : -1;
-              setKpLen(kpCount);
-
-              // Optional debug overlay
-              const dbgCvs = debugCanvasRef?.current;
-              if (dbgCvs && face) {
-                if (dbgCvs.width !== cvs.width || dbgCvs.height !== cvs.height) {
-                  dbgCvs.width  = cvs.width;
-                  dbgCvs.height = cvs.height;
-                }
-                const dbgCtx = dbgCvs.getContext("2d");
-                if (dbgCtx) {
-                  // Selfie-mirror display
-                  dbgCtx.save();
-                  dbgCtx.translate(cvs.width, 0);
-                  dbgCtx.scale(-1, 1);
-                  dbgCtx.drawImage(cvs, 0, 0);
-                  dbgCtx.restore();
-                  // Iris points
-                  for (let i = 468; i < 476 && i < face.keypoints.length; i++) {
-                    const kp = face.keypoints[i];
-                    dbgCtx.fillStyle = i < 472 ? "#00ffff" : "#ff00ff";
-                    dbgCtx.beginPath();
-                    dbgCtx.arc(kp.x, kp.y, 3, 0, Math.PI * 2);
-                    dbgCtx.fill();
-                  }
-                }
-              }
-
-              const gx             = face ? calcIrisGazeX(face.keypoints) : null;
-              const faceMeshDetected = kpCount > 0;
-              const valid            = gx !== null;
-
-              let zone: GazeZone = "none";
-              let gazeXVal = 0;
-              let faceDetected = false;
-
-              if (!faceMeshDetected) {
-                if (faceLostAtRef.current === null) faceLostAtRef.current = now;
-                const lostMs = now - faceLostAtRef.current;
-                if (lostMs < FACE_LOST_RESET_MS) zone = "center";
-                else { dLeftRef.current = 0; dRightRef.current = 0; }
-              } else {
-                faceLostAtRef.current = null;
-                faceDetected = true;
-                if (valid) {
-                  gazeXVal = gx!;
-                  zone = zoneFromGaze(gx, thresholdRef.current);
-                  bumpActivity();
-                } else {
-                  zone = "center";
-                }
-              }
-
-              const d = dwellMsRef.current;
-              if (zone === "left") {
-                dLeftRef.current  = Math.min(d, dLeftRef.current + dt);
-                dRightRef.current = Math.max(0, dRightRef.current - dt * 2);
-              } else if (zone === "right") {
-                dRightRef.current = Math.min(d, dRightRef.current + dt);
-                dLeftRef.current  = Math.max(0, dLeftRef.current - dt * 2);
-              } else if (zone === "center") {
-                dLeftRef.current  = Math.max(0, dLeftRef.current  - dt * 0.6);
-                dRightRef.current = Math.max(0, dRightRef.current - dt * 0.6);
-              }
-
-              dLeftRef.current  = Math.min(d, Math.max(0, dLeftRef.current));
-              dRightRef.current = Math.min(d, Math.max(0, dRightRef.current));
-
-              if (dLeftRef.current >= d) {
-                onLeftRef.current?.();
-                dLeftRef.current  = 0;
-                dRightRef.current = 0;
-              } else if (dRightRef.current >= d) {
-                onRightRef.current?.();
-                dLeftRef.current  = 0;
-                dRightRef.current = 0;
-              }
-
-              setState({
-                zone,
-                leftProgress:  d > 0 ? dLeftRef.current  / d : 0,
-                rightProgress: d > 0 ? dRightRef.current / d : 0,
-                gazeX: gazeXVal,
-                faceDetected,
-                isReady: true,
-                error: null,
-              });
-            })
-            .catch((e: unknown) => {
-              const msg = e instanceof Error ? e.message : String(e);
-              console.error("[useIrisGaze] estimateFaces error:", msg);
-              setState((s) => ({ ...s, error: `Detection error: ${msg.slice(0, 120)}` }));
-            })
+          // Send video frame directly — COOP/COEP headers removed so this works
+          mesh.send({ image: vid })
+            .catch(() => { /* per-frame errors ignored */ })
             .finally(() => { sendingRef.current = false; });
         };
-
         runLoop();
 
       } catch (e: unknown) {
@@ -447,7 +428,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       stopAll();
       setInitStatus("");
     };
-  }, [enabled, restartKey, stopAll, bumpActivity, debugCanvasRef, cameraDeviceId]);
+  }, [enabled, restartKey, stopAll, bumpActivity, cameraDeviceId]);
 
   return { videoRef, frameCount, resultCount, kpLen, videoSize, initStatus, cameras, ...state };
 }
