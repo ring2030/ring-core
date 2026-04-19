@@ -24,9 +24,9 @@ export interface UseIrisGazeOptions {
   onActivity?: () => void;
   enabled?: boolean;
   restartKey?: number;
-  /** 提供するとフレーム＋検出結果をこの canvas に描画する（開発用デバッグ） */
+  /** Debug: draw detected landmarks on this canvas (development only) */
   debugCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
-  /** 使用するカメラの deviceId（未指定 = ブラウザのデフォルト） */
+  /** Camera deviceId to use (undefined = browser default) */
   cameraDeviceId?: string;
 }
 
@@ -35,21 +35,56 @@ export interface CameraDevice {
   label: string;
 }
 
-type FaceKp = { x: number; y: number; name?: string };
+type FaceKp = { x: number; y: number; z?: number; name?: string };
 type FaceBox = { xMin: number; yMin: number; width: number; height: number };
-type DetectedFace = { box: FaceBox; keypoints: FaceKp[] };
+type DetectedFaceMesh = { box: FaceBox; keypoints: FaceKp[] };
 
 /**
- * face-detection の結果からgaze X を算出。
- * flipHorizontal:true で取得 → 右を見ると noseTip.x が大きくなる（ユーザー視点）。
+ * Iris-based gaze X using MediaPipe FaceMesh (refineLandmarks: true → 478 keypoints).
+ *
+ * Iris landmarks:
+ *   Left iris rim:  468, 469, 470, 471
+ *   Right iris rim: 472, 473, 474, 475
+ *
+ * Eye corner landmarks (after flipHorizontal: true — selfie / user perspective):
+ *   Face "left" eye outer: 33  (user's left, lower x in flipped image)
+ *   Face "left" eye inner: 133 (toward nose, higher x)
+ *   Face "right" eye inner: 362 (toward nose, lower x)
+ *   Face "right" eye outer: 263 (user's right, higher x)
+ *
+ * Returns -1 (looking left = Restroom) … +1 (looking right = Chat).
  */
-function calcGazeX(face: DetectedFace): number | null {
-  const noseTip = face.keypoints.find((k) => k.name === "noseTip") ?? face.keypoints[2];
-  if (!noseTip) return null;
-  const faceCenter = face.box.xMin + face.box.width / 2;
-  if (face.box.width < 20) return null; // 顔が小さすぎる（遠すぎ）
-  const offset = (noseTip.x - faceCenter) / (face.box.width * 0.35);
-  return Math.max(-1, Math.min(1, offset));
+function calcIrisGazeX(keypoints: FaceKp[]): number | null {
+  if (keypoints.length < 476) return null;
+
+  // Iris centers (centroid of 4 rim points each)
+  const lIrisX =
+    (keypoints[468].x + keypoints[469].x + keypoints[470].x + keypoints[471].x) / 4;
+  const rIrisX =
+    (keypoints[472].x + keypoints[473].x + keypoints[474].x + keypoints[475].x) / 4;
+
+  // Eye horizontal extent
+  const lLeft  = Math.min(keypoints[33].x,  keypoints[133].x);
+  const lRight = Math.max(keypoints[33].x,  keypoints[133].x);
+  const rLeft  = Math.min(keypoints[362].x, keypoints[263].x);
+  const rRight = Math.max(keypoints[362].x, keypoints[263].x);
+
+  const lWidth = lRight - lLeft;
+  const rWidth = rRight - rLeft;
+
+  const lOk = lWidth > 5;
+  const rOk = rWidth > 5;
+  if (!lOk && !rOk) return null;
+
+  // Normalise iris within eye: 0 = leftmost, 1 = rightmost
+  const norms: number[] = [];
+  if (lOk) norms.push((lIrisX - lLeft) / lWidth);
+  if (rOk) norms.push((rIrisX - rLeft) / rWidth);
+
+  const avg = norms.reduce((a, b) => a + b, 0) / norms.length;
+  // Centre at 0, scale ±0.5 → ±1
+  const gazeX = (avg - 0.5) * 2;
+  return Math.max(-1, Math.min(1, gazeX));
 }
 
 function zoneFromGaze(gazeX: number | null, threshold: number): GazeZone {
@@ -57,39 +92,6 @@ function zoneFromGaze(gazeX: number | null, threshold: number): GazeZone {
   if (gazeX < -threshold) return "left";
   if (gazeX > threshold) return "right";
   return "center";
-}
-
-/** デバッグキャンバスに映像＋検出結果を描画（左右反転でセルフィー表示） */
-function drawDebug(
-  dbgCtx: CanvasRenderingContext2D,
-  src: HTMLCanvasElement,
-  face: DetectedFace | null,
-  videoWidth: number,
-) {
-  // セルフィー表示（左右反転）
-  dbgCtx.save();
-  dbgCtx.translate(videoWidth, 0);
-  dbgCtx.scale(-1, 1);
-  dbgCtx.drawImage(src, 0, 0);
-  dbgCtx.restore();
-
-  if (!face) return;
-
-  // flipHorizontal:true で返った座標は「反転後の空間」に一致している
-  // → ミラー描画後の canvas に直接プロットすれば OK（mx() 変換不要）
-
-  // バウンディングボックス
-  dbgCtx.strokeStyle = "#00ff00";
-  dbgCtx.lineWidth = 2;
-  dbgCtx.strokeRect(face.box.xMin, face.box.yMin, face.box.width, face.box.height);
-
-  // キーポイント
-  for (const kp of face.keypoints) {
-    dbgCtx.fillStyle = kp.name === "noseTip" ? "#ff3333" : "#ffff00";
-    dbgCtx.beginPath();
-    dbgCtx.arc(kp.x, kp.y, kp.name === "noseTip" ? 6 : 3, 0, Math.PI * 2);
-    dbgCtx.fill();
-  }
 }
 
 const FACE_LOST_RESET_MS = 300;
@@ -107,9 +109,9 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
     cameraDeviceId,
   } = options;
 
-  const dwellMsRef = useRef(dwellMs);
-  dwellMsRef.current = dwellMs;
-  const thresholdRef = useRef(threshold);
+  const dwellMsRef    = useRef(dwellMs);
+  dwellMsRef.current  = dwellMs;
+  const thresholdRef  = useRef(threshold);
   thresholdRef.current = threshold;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -123,31 +125,31 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
     error: null,
   });
 
-  const dLeftRef = useRef(0);
-  const dRightRef = useRef(0);
-  const faceLostAtRef = useRef<number | null>(null);
-  const lastActivityAtRef = useRef(0);
-  const lastTsRef = useRef<number | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const modelCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const dLeftRef           = useRef(0);
+  const dRightRef          = useRef(0);
+  const faceLostAtRef      = useRef<number | null>(null);
+  const lastActivityAtRef  = useRef(0);
+  const lastTsRef          = useRef<number | null>(null);
+  const streamRef          = useRef<MediaStream | null>(null);
+  const modelCanvasRef     = useRef<HTMLCanvasElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const detectorRef = useRef<any>(null);
-  const rafRef = useRef<number | null>(null);
-  const cancelledRef = useRef(false);
-  const sendingRef = useRef(false);
+  const detectorRef        = useRef<any>(null);
+  const rafRef             = useRef<number | null>(null);
+  const cancelledRef       = useRef(false);
+  const sendingRef         = useRef(false);
 
-  const [frameCount, setFrameCount] = useState(0);
+  const [frameCount,  setFrameCount]  = useState(0);
   const [resultCount, setResultCount] = useState(0);
-  const [kpLen, setKpLen] = useState(-1);
-  const [videoSize, setVideoSize] = useState({ w: 0, h: 0, paused: true, brightness: -1 });
-  const [initStatus, setInitStatus] = useState("");
-  const [cameras, setCameras] = useState<CameraDevice[]>([]);
+  const [kpLen,       setKpLen]       = useState(-1);
+  const [videoSize,   setVideoSize]   = useState({ w: 0, h: 0, paused: true, brightness: -1 });
+  const [initStatus,  setInitStatus]  = useState("");
+  const [cameras,     setCameras]     = useState<CameraDevice[]>([]);
 
-  const onLeftRef = useRef(onLeftSelect);
-  const onRightRef = useRef(onRightSelect);
+  const onLeftRef     = useRef(onLeftSelect);
+  const onRightRef    = useRef(onRightSelect);
   const onActivityRef = useRef(onActivity);
-  onLeftRef.current = onLeftSelect;
-  onRightRef.current = onRightSelect;
+  onLeftRef.current     = onLeftSelect;
+  onRightRef.current    = onRightSelect;
   onActivityRef.current = onActivity;
 
   const bumpActivity = useCallback(() => {
@@ -165,13 +167,13 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
     try { detectorRef.current?.dispose(); } catch { /* ignore */ }
     detectorRef.current = null;
     try { streamRef.current?.getTracks().forEach((t) => t.stop()); } catch { /* ignore */ }
-    streamRef.current = null;
+    streamRef.current    = null;
     modelCanvasRef.current = null;
-    sendingRef.current = false;
-    lastTsRef.current = null;
+    sendingRef.current   = false;
+    lastTsRef.current    = null;
     faceLostAtRef.current = null;
-    dLeftRef.current = 0;
-    dRightRef.current = 0;
+    dLeftRef.current     = 0;
+    dRightRef.current    = 0;
   }, []);
 
   useEffect(() => {
@@ -193,27 +195,18 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
       setState((s) => ({ ...s, error: null, isReady: false }));
 
       try {
-        // ── Step 1: TF.js WebGL バックエンド初期化 ──
-        setInitStatus("Initializing TF.js WebGL…");
-        const tf = await import("@tensorflow/tfjs-core");
-        await import("@tensorflow/tfjs-backend-webgl");
-        try {
-          await tf.setBackend("webgl");
-        } catch {
-          // WebGL が使えない場合は CPU にフォールバック
-          await tf.setBackend("cpu");
-        }
-        await tf.ready();
+        // ── Step 1: Load MediaPipe FaceMesh detector (self-hosted WASM) ──
+        setInitStatus("Loading face model…");
+        const faceLandmarks = await import("@tensorflow-models/face-landmarks-detection");
         if (localCancel || cancelledRef.current) return;
 
-        // ── Step 2: 顔検出モデルをロード ──
-        setInitStatus("Loading face model… (first load may take a while)");
-        const faceDetection = await import("@tensorflow-models/face-detection");
-        const detector = await faceDetection.createDetector(
-          faceDetection.SupportedModels.MediaPipeFaceDetector,
+        const detector = await faceLandmarks.createDetector(
+          faceLandmarks.SupportedModels.MediaPipeFaceMesh,
           {
-            runtime: "tfjs" as const,
-            modelType: "short" as const, // 2m以内・高速
+            runtime: "mediapipe" as const,
+            // WASM files are self-hosted under public/@mediapipe/face_mesh/
+            solutionPath: "/@mediapipe/face_mesh",
+            refineLandmarks: true,  // enables iris landmarks 468-477
             maxFaces: 1,
           },
         );
@@ -224,21 +217,22 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         detectorRef.current = detector;
         setInitStatus("Model ready. Starting camera…");
 
-        // ── Step 3: カメラ一覧を取得してから開く ──
-        // 一度 permissions を取得しないとラベルが空になるため、先に getUserMedia する
+        // ── Step 2: Open camera ──
         const videoConstraints: MediaTrackConstraints = cameraDeviceId
           ? { deviceId: { exact: cameraDeviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
           : { width: { ideal: 640 }, height: { ideal: 480 } };
         const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraints });
 
-        // 接続済みカメラ一覧を取得（パーミッション取得後でないとラベルが空）
+        // Enumerate cameras (label available after getUserMedia)
         try {
           const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices
-            .filter((d) => d.kind === "videoinput")
-            .map((d) => ({ deviceId: d.deviceId, label: d.label || `Camera ${d.deviceId.slice(0, 8)}` }));
-          setCameras(videoDevices);
+          setCameras(
+            devices
+              .filter((d) => d.kind === "videoinput")
+              .map((d) => ({ deviceId: d.deviceId, label: d.label || `Camera ${d.deviceId.slice(0, 8)}` })),
+          );
         } catch { /* ignore */ }
+
         if (localCancel || cancelledRef.current) {
           stream.getTracks().forEach((t) => t.stop());
           detector.dispose();
@@ -246,7 +240,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
         }
         streamRef.current = stream;
 
-        // ── Step 4: videoRef が DOM に現れるまで待つ ──
+        // ── Step 3: Wait for videoRef to appear in the DOM (up to 5s) ──
         const video = await (async () => {
           const t0 = performance.now();
           while (performance.now() - t0 < 5000) {
@@ -261,17 +255,13 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           stream.getTracks().forEach((t) => t.stop());
           detector.dispose();
           if (!localCancel && !cancelledRef.current) {
-            setState((s) => ({
-              ...s,
-              error: "Video element not ready. Reload the page.",
-              isReady: false,
-            }));
+            setState((s) => ({ ...s, error: "Video element not ready. Reload the page.", isReady: false }));
           }
           return;
         }
 
-        video.srcObject = stream;
-        video.muted = true;
+        video.srcObject  = stream;
+        video.muted      = true;
         video.playsInline = true;
         await video.play().catch(() => {});
         if (localCancel || cancelledRef.current) {
@@ -289,6 +279,7 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         let diagCounter = 0;
 
+        // ── Step 4: Detection loop ──
         const runLoop = () => {
           if (localCancel || cancelledRef.current) return;
           rafRef.current = requestAnimationFrame(runLoop);
@@ -299,17 +290,17 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           if (sendingRef.current) return;
           if (vid.videoWidth === 0) return;
 
-          // ── モデル用キャンバスにビデオを描画 ──
+          // Snapshot video frame onto offscreen canvas
           const cvs = modelCanvasRef.current!;
           if (cvs.width !== vid.videoWidth || cvs.height !== vid.videoHeight) {
-            cvs.width = vid.videoWidth;
+            cvs.width  = vid.videoWidth;
             cvs.height = vid.videoHeight;
           }
           const ctx = cvs.getContext("2d");
           if (!ctx) return;
           try { ctx.drawImage(vid, 0, 0); } catch { return; }
 
-          // ── 診断情報を 30 フレームごとに更新 ──
+          // Diagnostics every 30 frames
           if (diagCounter++ % 30 === 0) {
             let brightness = -1;
             try {
@@ -324,41 +315,53 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
             if (vid.paused) { vid.play().catch(() => {}); }
           }
 
-          const videoWidth = vid.videoWidth;
           sendingRef.current = true;
           setFrameCount((n) => n + 1);
 
-          // ── 顔検出（flipHorizontal:true = 右を見ると gazeX > 0） ──
-          (det.estimateFaces(cvs, { flipHorizontal: true }) as Promise<DetectedFace[]>)
+          // Estimate face landmarks with iris (flipHorizontal: true = selfie / user perspective)
+          (det.estimateFaces(cvs, { flipHorizontal: true }) as Promise<DetectedFaceMesh[]>)
             .then((faces) => {
               if (localCancel || cancelledRef.current) return;
               setResultCount((n) => n + 1);
 
-              const now = performance.now();
+              const now  = performance.now();
               const last = lastTsRef.current ?? now;
-              const dt = Math.min(Math.max(now - last, 0), 100);
+              const dt   = Math.min(Math.max(now - last, 0), 100);
               lastTsRef.current = now;
 
-              const face = faces[0] ?? null;
+              const face    = faces[0] ?? null;
               const kpCount = face ? face.keypoints.length : -1;
               setKpLen(kpCount);
 
-              // ── デバッグキャンバスに描画 ──
+              // Optional debug overlay
               const dbgCvs = debugCanvasRef?.current;
-              if (dbgCvs) {
-                if (dbgCvs.width !== videoWidth || dbgCvs.height !== vid.videoHeight) {
-                  dbgCvs.width = videoWidth;
-                  dbgCvs.height = vid.videoHeight;
+              if (dbgCvs && face) {
+                if (dbgCvs.width !== cvs.width || dbgCvs.height !== cvs.height) {
+                  dbgCvs.width  = cvs.width;
+                  dbgCvs.height = cvs.height;
                 }
                 const dbgCtx = dbgCvs.getContext("2d");
                 if (dbgCtx) {
-                  drawDebug(dbgCtx, cvs, face, videoWidth);
+                  // Selfie-mirror display
+                  dbgCtx.save();
+                  dbgCtx.translate(cvs.width, 0);
+                  dbgCtx.scale(-1, 1);
+                  dbgCtx.drawImage(cvs, 0, 0);
+                  dbgCtx.restore();
+                  // Iris points
+                  for (let i = 468; i < 476 && i < face.keypoints.length; i++) {
+                    const kp = face.keypoints[i];
+                    dbgCtx.fillStyle = i < 472 ? "#00ffff" : "#ff00ff";
+                    dbgCtx.beginPath();
+                    dbgCtx.arc(kp.x, kp.y, 3, 0, Math.PI * 2);
+                    dbgCtx.fill();
+                  }
                 }
               }
 
-              const gx = face ? calcGazeX(face) : null;
+              const gx             = face ? calcIrisGazeX(face.keypoints) : null;
               const faceMeshDetected = kpCount > 0;
-              const valid = gx !== null;
+              const valid            = gx !== null;
 
               let zone: GazeZone = "none";
               let gazeXVal = 0;
@@ -383,32 +386,32 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
               const d = dwellMsRef.current;
               if (zone === "left") {
-                dLeftRef.current = Math.min(d, dLeftRef.current + dt);
+                dLeftRef.current  = Math.min(d, dLeftRef.current + dt);
                 dRightRef.current = Math.max(0, dRightRef.current - dt * 2);
               } else if (zone === "right") {
                 dRightRef.current = Math.min(d, dRightRef.current + dt);
-                dLeftRef.current = Math.max(0, dLeftRef.current - dt * 2);
+                dLeftRef.current  = Math.max(0, dLeftRef.current - dt * 2);
               } else if (zone === "center") {
-                dLeftRef.current = Math.max(0, dLeftRef.current - dt * 0.6);
+                dLeftRef.current  = Math.max(0, dLeftRef.current  - dt * 0.6);
                 dRightRef.current = Math.max(0, dRightRef.current - dt * 0.6);
               }
 
-              dLeftRef.current = Math.min(d, Math.max(0, dLeftRef.current));
+              dLeftRef.current  = Math.min(d, Math.max(0, dLeftRef.current));
               dRightRef.current = Math.min(d, Math.max(0, dRightRef.current));
 
               if (dLeftRef.current >= d) {
                 onLeftRef.current?.();
-                dLeftRef.current = 0;
+                dLeftRef.current  = 0;
                 dRightRef.current = 0;
               } else if (dRightRef.current >= d) {
                 onRightRef.current?.();
-                dLeftRef.current = 0;
+                dLeftRef.current  = 0;
                 dRightRef.current = 0;
               }
 
               setState({
                 zone,
-                leftProgress: d > 0 ? dLeftRef.current / d : 0,
+                leftProgress:  d > 0 ? dLeftRef.current  / d : 0,
                 rightProgress: d > 0 ? dRightRef.current / d : 0,
                 gazeX: gazeXVal,
                 faceDetected,
@@ -417,7 +420,6 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
               });
             })
             .catch((e: unknown) => {
-              // エラーを飲み込まずに state に反映（何が起きているか可視化）
               const msg = e instanceof Error ? e.message : String(e);
               console.error("[useIrisGaze] estimateFaces error:", msg);
               setState((s) => ({ ...s, error: `Detection error: ${msg.slice(0, 120)}` }));

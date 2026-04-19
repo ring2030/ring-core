@@ -36,7 +36,8 @@
       "Bash(cmd:*)",
       "Bash(xargs wc *)",
       "Bash(npx eslint *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Bash(ls C:\\\\Users\\\\user\\\\Desktop\\\\ring-core\\\\next.config*)"
     ]
   }
 }
