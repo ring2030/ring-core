@@ -54,7 +54,16 @@
       "Bash(curl -s --max-time 15 \"https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1?tf-hub-format=compressed\" -o /tmp/model_test.bin)",
       "Read(//tmp/**)",
       "Bash(npm show *)",
-      "Bash(ls C:/Users/user/Desktop/ring-core/public/@mediapipe/face_detection/*.data)"
+      "Bash(ls C:/Users/user/Desktop/ring-core/public/@mediapipe/face_detection/*.data)",
+      "Bash(ls -lh C:/Users/user/Desktop/ring-core/public/@mediapipe/face_detection/*.wasm)",
+      "Bash(curl -sI \"https://ring-core2026.vercel.app/@mediapipe/face_detection/face_detection_solution_simd_wasm_bin.wasm\")",
+      "Bash(curl -sI \"https://ring-core2026.vercel.app/@mediapipe/face_detection/face_detection.js\")",
+      "Bash(curl -sI \"https://ring-core2026.vercel.app/@mediapipe/face_detection/face_detection_short_range.tflite\")",
+      "Bash(curl -s \"https://ring-core2026.vercel.app\")",
+      "Bash(curl -sI \"https://ring-core2026.vercel.app\")",
+      "Bash(curl -s \"https://ring-core2026.vercel.app/@mediapipe/face_detection/face_detection.js\")",
+      "Bash(curl -sI \"https://ring-core2026.vercel.app/@mediapipe/face_detection/face_detection_short.binarypb\")",
+      "Bash(curl -sIL \"https://ring-core2026.vercel.app/@mediapipe/face_detection/face_detection_solution_simd_wasm_bin.wasm\")"
     ]
   }
 }

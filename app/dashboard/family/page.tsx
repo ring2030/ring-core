@@ -22,6 +22,7 @@ import {
 } from "@/components/dashboard/DashboardChrome";
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { REASON_CHAT, REASON_RESTROOM } from "@/lib/calls/reasons";
+import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 
 // ─── 型 ──────────────────────────────────────────────
 
@@ -186,7 +187,7 @@ export default function FamilyDashboardPage() {
       return;
     }
 
-    const q = query(collection(db, "calls"));
+    const q = query(collection(db, getCallsCollectionNameForCurrentHospital()));
 
     const unsub = onSnapshot(
       q,

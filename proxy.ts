@@ -23,11 +23,13 @@ export function proxy(request: NextRequest) {
     path.startsWith("/dashboard/nurse") ||
     path.startsWith("/settings")
   ) {
-    if (!session || session.role !== "nurse") return redirectToLogin(request);
+    if (!session || session.role !== "nurse" || !session.hospitalId) {
+      return redirectToLogin(request);
+    }
   }
 
   if (path.startsWith("/dashboard/family") || path.startsWith("/dashboard/history")) {
-    if (!session || (session.role !== "family" && session.role !== "nurse")) {
+    if (!session || !session.hospitalId || (session.role !== "family" && session.role !== "nurse")) {
       return redirectToLogin(request);
     }
   }

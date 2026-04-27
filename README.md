@@ -45,6 +45,7 @@ The default **patient UI is English**. Legacy Japanese labels in Firestore are n
 | **AI** | **Google Gemini** via Route Handlers (`POST /api/chat`, `POST /api/family-summary`). Regex fallback if the API is unavailable. |
 
 Deeper design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Stack detail: [docs/TECH_STACK.md](docs/TECH_STACK.md)
+PoC docs (JA): [docs/poc-spec-contest-ja.md](docs/poc-spec-contest-ja.md) · [docs/poc-demo-checklist-ja.md](docs/poc-demo-checklist-ja.md) · [docs/poc-ops-runbook-ja.md](docs/poc-ops-runbook-ja.md)
 
 ---
 
@@ -112,7 +113,9 @@ For a scripted demo, use `/demo` or `/demo-1min` if your deployment includes tho
 | `POST /api/invite` | Create invite token (**nurse session required**) |
 | `GET /api/invite/consume?token=…` | Validate token, set cookie, redirect |
 | `POST /api/auth/nurse-login` · `POST /api/auth/logout` | Session cookie |
+| `GET` / `POST /api/auth/hospital-switch` | Nurse hospital membership read/switch |
 | `GET` · `POST` · `PATCH /api/nurse-accounts` | Account admin (**nurse session required**) |
+| `GET /api/audit-logs` · `GET /api/audit-logs/export` | Audit log list + CSV export |
 
 **External APIs (configure, not in repo):** default Gemini base `https://generativelanguage.googleapis.com/v1beta` (override with `GEMINI_API_BASE`); Firebase & Eyedid configured in their consoles.
 

@@ -26,6 +26,7 @@ import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives
 import { getFirebaseAuth, getFirestoreDb } from "@/lib/firebase";
 import { normalizeCallDoc } from "@/lib/calls/schema";
 import { emojiForReason } from "@/lib/calls/reasons";
+import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 
 // ─── Patient roster (demo) ───────────────────────────────────────────────────
 
@@ -164,7 +165,8 @@ export default function NurseDashboard() {
   useEffect(() => {
     if (!initResult.db) return;
 
-    const q = query(collection(initResult.db, "calls"), orderBy("送信日時", "desc"));
+    const callsCollection = getCallsCollectionNameForCurrentHospital();
+    const q = query(collection(initResult.db, callsCollection), orderBy("送信日時", "desc"));
     return onSnapshot(q, (snap) => {
       setIsOnline(true);
 

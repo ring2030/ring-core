@@ -30,6 +30,7 @@ import {
 } from "@/components/dashboard/DashboardChrome";
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { emojiForReason } from "@/lib/calls/reasons";
+import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 
 // ─── 型 ──────────────────────────────────────────────────────────────────────
 
@@ -162,7 +163,7 @@ export default function FamilyHistoryPage() {
       return;
     }
 
-    const q = query(collection(dbResult.db, "calls"));
+    const q = query(collection(dbResult.db, getCallsCollectionNameForCurrentHospital()));
 
     const unsub = onSnapshot(q, (snap) => {
       const start = startOf(selectedDate).getTime();

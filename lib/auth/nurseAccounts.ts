@@ -1,9 +1,11 @@
 import { createHmac } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import { DEFAULT_HOSPITAL_ID } from "@/lib/auth/hospitalScope";
 
 type StoredNurseAccount = {
   id: string;
+  hospitalId: string;
   passwordHash: string;
   disabled: boolean;
   createdAt: string;
@@ -16,6 +18,7 @@ type NurseAccountStore = {
 
 export type NurseAccountView = {
   id: string;
+  hospitalId: string;
   disabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +50,9 @@ async function readStore(): Promise<NurseAccountStore> {
     const raw = await fs.readFile(STORE_FILE, "utf8");
     const parsed = JSON.parse(raw) as NurseAccountStore;
     if (!Array.isArray(parsed.accounts)) throw new Error("invalid store");
+    for (const account of parsed.accounts) {
+      if (!account.hospitalId) account.hospitalId = DEFAULT_HOSPITAL_ID;
+    }
     return parsed;
   } catch {
     const now = new Date().toISOString();
@@ -54,6 +60,7 @@ async function readStore(): Promise<NurseAccountStore> {
       accounts: [
         {
           id: DEFAULT_ID,
+          hospitalId: DEFAULT_HOSPITAL_ID,
           passwordHash: hashPassword(DEFAULT_PASSWORD),
           disabled: false,
           createdAt: now,
@@ -74,15 +81,19 @@ async function readStore(): Promise<NurseAccountStore> {
 function toView(account: StoredNurseAccount): NurseAccountView {
   return {
     id: account.id,
+    hospitalId: account.hospitalId,
     disabled: account.disabled,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
 }
 
-export async function listNurseAccounts(): Promise<NurseAccountView[]> {
+export async function listNurseAccounts(hospitalId: string): Promise<NurseAccountView[]> {
   const store = await readStore();
-  return store.accounts.map(toView).sort((a, b) => a.id.localeCompare(b.id));
+  return store.accounts
+    .filter((a) => a.hospitalId === hospitalId)
+    .map(toView)
+    .sort((a, b) => a.id.localeCompare(b.id));
 }
 
 export async function verifyNurseCredentials(id: string, password: string): Promise<boolean> {
@@ -92,17 +103,31 @@ export async function verifyNurseCredentials(id: string, password: string): Prom
   return account.passwordHash === hashPassword(password);
 }
 
-export async function createNurseAccount(id: string, password: string): Promise<NurseAccountView> {
+export async function listHospitalsForNurse(id: string, password: string): Promise<string[]> {
+  const store = await readStore();
+  const passwordHash = hashPassword(password);
+  const matched = store.accounts.filter(
+    (a) => a.id === id && !a.disabled && a.passwordHash === passwordHash,
+  );
+  return [...new Set(matched.map((a) => a.hospitalId))].sort();
+}
+
+export async function createNurseAccount(
+  id: string,
+  password: string,
+  hospitalId: string,
+): Promise<NurseAccountView> {
   const normId = id.trim();
   if (!normId) throw new Error("ID is required.");
   if (password.length < 1) throw new Error("Password is required.");
   const store = await readStore();
-  if (store.accounts.some((a) => a.id === normId)) {
+  if (store.accounts.some((a) => a.id === normId && a.hospitalId === hospitalId)) {
     throw new Error("That ID already exists.");
   }
   const now = new Date().toISOString();
   const created: StoredNurseAccount = {
     id: normId,
+    hospitalId,
     passwordHash: hashPassword(password),
     disabled: false,
     createdAt: now,
@@ -115,11 +140,14 @@ export async function createNurseAccount(id: string, password: string): Promise<
 
 export async function updateNurseAccount(args: {
   id: string;
+  hospitalId: string;
   disabled?: boolean;
   password?: string;
 }): Promise<NurseAccountView> {
   const store = await readStore();
-  const account = store.accounts.find((a) => a.id === args.id);
+  const account = store.accounts.find(
+    (a) => a.id === args.id && a.hospitalId === args.hospitalId,
+  );
   if (!account) throw new Error("No account found for that ID.");
   if (typeof args.disabled === "boolean") account.disabled = args.disabled;
   if (typeof args.password === "string" && args.password.length > 0) {
@@ -128,4 +156,37 @@ export async function updateNurseAccount(args: {
   account.updatedAt = new Date().toISOString();
   await writeStore(store);
   return toView(account);
+}
+
+export async function addHospitalMembership(args: {
+  id: string;
+  fromHospitalId: string;
+  toHospitalId: string;
+}): Promise<NurseAccountView> {
+  const sourceHospitalId = args.fromHospitalId.trim();
+  const targetHospitalId = args.toHospitalId.trim();
+  if (!sourceHospitalId || !targetHospitalId) {
+    throw new Error("Source and target hospital IDs are required.");
+  }
+  const store = await readStore();
+  const source = store.accounts.find(
+    (a) => a.id === args.id && a.hospitalId === sourceHospitalId,
+  );
+  if (!source) throw new Error("No account found in the current hospital.");
+  const exists = store.accounts.find(
+    (a) => a.id === args.id && a.hospitalId === targetHospitalId,
+  );
+  if (exists) throw new Error("That account is already assigned to the target hospital.");
+  const now = new Date().toISOString();
+  const created: StoredNurseAccount = {
+    id: source.id,
+    hospitalId: targetHospitalId,
+    passwordHash: source.passwordHash,
+    disabled: source.disabled,
+    createdAt: now,
+    updatedAt: now,
+  };
+  store.accounts.push(created);
+  await writeStore(store);
+  return toView(created);
 }

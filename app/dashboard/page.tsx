@@ -5,6 +5,7 @@ import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { buildCallWritePayload } from "@/lib/calls/schema";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
+import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 
 const REASON_OPTIONS = [
   "Restroom",
@@ -61,7 +62,7 @@ export default function DashboardPage() {
 
     try {
       await addDoc(
-        collection(getFirestoreDb(), "calls"),
+        collection(getFirestoreDb(), getCallsCollectionNameForCurrentHospital()),
         buildCallWritePayload({
           reasons: [...reasons],
           note: notes,

@@ -5,6 +5,7 @@ import {
   getSessionCookieName,
   verifySessionToken,
 } from "@/lib/auth/tokens";
+import { appendAuditEvent } from "@/lib/audit/auditLog";
 
 type InviteBody = {
   role?: "family" | "patient";
@@ -28,12 +29,28 @@ export async function POST(req: Request) {
     const body = (await req.json()) as InviteBody;
     const role = body.role === "patient" ? "patient" : "family";
     const expiresInMinutes = Math.min(Math.max(body.expiresInMinutes ?? 180, 10), 24 * 60);
+    if (!session.hospitalId) {
+      return NextResponse.json(
+        { ok: false, error: "Hospital scope is missing in your session." },
+        { status: 400 },
+      );
+    }
 
     const token = createInviteToken({
       role,
+      hospitalId: session.hospitalId,
       patientId: body.patientId?.trim(),
       patientName: body.patientName?.trim(),
       ttlSec: expiresInMinutes * 60,
+    });
+    await appendAuditEvent({
+      at: new Date().toISOString(),
+      hospitalId: session.hospitalId,
+      actorId: session.nurseId ?? "unknown",
+      actorRole: "nurse",
+      action: "invite.create",
+      target: role,
+      note: `expires_in=${expiresInMinutes}m`,
     });
 
     return NextResponse.json({

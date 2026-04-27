@@ -7,6 +7,7 @@ import { StaffLinks } from "@/components/dashboard/StaffLinks";
 import { TuningPanel } from "@/components/kiyoko/TuningPanel";
 import { setEyedidCameraOnTop, getEyedidCameraOnTop } from "@/lib/gaze/eyedidCameraPlacementStorage";
 import { getStoredGazeEngine, setStoredGazeEngine, type StoredGazeEngine } from "@/lib/gaze/gazeEngineStorage";
+import { getCurrentHospitalIdFromCookie } from "@/lib/auth/clientHospital";
 import {
   loadGazeTuning,
   normalizeGazeTuning,
@@ -23,6 +24,27 @@ import {
   setStoredIrisCameraId,
 } from "@/lib/gaze/irisCameraStorage";
 
+type NurseAccount = {
+  id: string;
+  hospitalId: string;
+  disabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AuditEvent = {
+  at: string;
+  actorId: string;
+  action: string;
+  target: string;
+  note?: string;
+};
+
+type HospitalSwitchInfo = {
+  hospitalId: string;
+  hospitalIds: string[];
+};
+
 export default function SettingsPage() {
   const [inputMode, setInputMode] = useState<NurseInputMode>(() => getStoredInputMode());
   const [gazeEngine, setGazeEngine] = useState<StoredGazeEngine>(() => getStoredGazeEngine());
@@ -31,6 +53,163 @@ export default function SettingsPage() {
   const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
   const [irisCamId, setIrisCamId] = useState<string | undefined>(() => getStoredIrisCameraId());
   const [mediaError, setMediaError] = useState<string | null>(null);
+  const [hospitalId, setHospitalId] = useState<string>("");
+  const [accounts, setAccounts] = useState<NurseAccount[]>([]);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [newId, setNewId] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [assignHospitalByUser, setAssignHospitalByUser] = useState<Record<string, string>>({});
+  const [accountBusy, setAccountBusy] = useState(false);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [hospitalChoices, setHospitalChoices] = useState<string[]>([]);
+  const [selectedHospitalId, setSelectedHospitalId] = useState("");
+
+  useEffect(() => {
+    setHospitalId(getCurrentHospitalIdFromCookie());
+  }, []);
+
+  const loadAccounts = useCallback(async () => {
+    const res = await fetch("/api/nurse-accounts");
+    const data = (await res.json()) as {
+      ok: boolean;
+      accounts?: NurseAccount[];
+      error?: string;
+    };
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error ?? "Could not load staff accounts.");
+    }
+    setAccounts(data.accounts ?? []);
+  }, []);
+
+  const loadAuditLogs = useCallback(async () => {
+    const res = await fetch("/api/audit-logs");
+    const data = (await res.json()) as {
+      ok: boolean;
+      events?: AuditEvent[];
+      error?: string;
+    };
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error ?? "Could not load audit logs.");
+    }
+    setAuditEvents(data.events ?? []);
+  }, []);
+
+  const loadHospitalSwitchInfo = useCallback(async () => {
+    const res = await fetch("/api/auth/hospital-switch");
+    const data = (await res.json()) as { ok: boolean; error?: string } & Partial<HospitalSwitchInfo>;
+    if (!res.ok || !data.ok || !data.hospitalId) {
+      throw new Error(data.error ?? "Could not load hospital memberships.");
+    }
+    const ids = data.hospitalIds ?? [data.hospitalId];
+    setHospitalChoices(ids);
+    setSelectedHospitalId(data.hospitalId);
+    setHospitalId(data.hospitalId);
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        await Promise.all([loadHospitalSwitchInfo(), loadAccounts(), loadAuditLogs()]);
+        setAccountError(null);
+      } catch (error: unknown) {
+        setAccountError(error instanceof Error ? error.message : "Could not load staff data.");
+      }
+    })();
+  }, [loadAccounts, loadAuditLogs, loadHospitalSwitchInfo]);
+
+  const createAccount = async () => {
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const res = await fetch("/api/nurse-accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: newId, password: newPassword }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "Could not create account.");
+      setNewId("");
+      setNewPassword("");
+      await Promise.all([loadAccounts(), loadAuditLogs()]);
+    } catch (error: unknown) {
+      setAccountError(error instanceof Error ? error.message : "Could not create account.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const toggleDisabled = async (id: string, disabled: boolean) => {
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const res = await fetch("/api/nurse-accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, disabled }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "Could not update account.");
+      await Promise.all([loadAccounts(), loadAuditLogs()]);
+    } catch (error: unknown) {
+      setAccountError(error instanceof Error ? error.message : "Could not update account.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const assignHospitalMembership = async (id: string) => {
+    const target = (assignHospitalByUser[id] ?? "").trim();
+    if (!target) {
+      setAccountError("Enter a target hospital ID first.");
+      return;
+    }
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const res = await fetch("/api/nurse-accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, assignHospitalId: target }),
+      });
+      const data = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !data.ok) throw new Error(data.error ?? "Could not assign hospital.");
+      setAssignHospitalByUser((prev) => ({ ...prev, [id]: "" }));
+      await Promise.all([loadAccounts(), loadAuditLogs(), loadHospitalSwitchInfo()]);
+    } catch (error: unknown) {
+      setAccountError(error instanceof Error ? error.message : "Could not assign hospital.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
+
+  const switchHospital = async () => {
+    if (!selectedHospitalId || selectedHospitalId === hospitalId) return;
+    setAccountBusy(true);
+    setAccountError(null);
+    try {
+      const res = await fetch("/api/auth/hospital-switch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hospitalId: selectedHospitalId }),
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        hospitalId?: string;
+        hospitalIds?: string[];
+        error?: string;
+      };
+      if (!res.ok || !data.ok || !data.hospitalId) {
+        throw new Error(data.error ?? "Could not switch hospital.");
+      }
+      setHospitalId(data.hospitalId);
+      setHospitalChoices(data.hospitalIds ?? [data.hospitalId]);
+      await Promise.all([loadAccounts(), loadAuditLogs()]);
+    } catch (error: unknown) {
+      setAccountError(error instanceof Error ? error.message : "Could not switch hospital.");
+    } finally {
+      setAccountBusy(false);
+    }
+  };
 
   useEffect(() => {
     saveGazeTuning(gazeTuning);
@@ -297,6 +476,149 @@ export default function SettingsPage() {
           <div className="mt-4">
             <StaffLinks className="gap-2" />
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-base font-bold text-slate-900">Hospital scope (PoC)</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Current hospital: <code>{hospitalId || "loading..."}</code>
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              value={selectedHospitalId}
+              onChange={(e) => setSelectedHospitalId(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              disabled={accountBusy}
+            >
+              {hospitalChoices.map((id) => (
+                <option key={id} value={id}>
+                  {id}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void switchHospital()}
+              disabled={accountBusy || !selectedHospitalId || selectedHospitalId === hospitalId}
+              className="rounded-xl bg-slate-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+            >
+              Switch hospital
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            Demo login <code>1/1</code> keeps existing data behavior while enabling hospital separation.
+          </p>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-base font-bold text-slate-900">Nurse accounts (this hospital)</h2>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <input
+              value={newId}
+              onChange={(e) => setNewId(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              placeholder="New login ID"
+            />
+            <input
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+              placeholder="New password"
+              type="password"
+            />
+            <button
+              type="button"
+              onClick={() => void createAccount()}
+              disabled={accountBusy}
+              className="rounded-xl bg-cyan-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+            >
+              Create account
+            </button>
+          </div>
+          {accountError && (
+            <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+              {accountError}
+            </p>
+          )}
+          <ul className="mt-4 space-y-2">
+            {accounts.map((account) => (
+              <li
+                key={`${account.hospitalId}:${account.id}`}
+                className="rounded-xl border border-slate-200 px-3 py-2"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{account.id}</p>
+                    <p className="text-xs text-slate-500">
+                      Updated {new Date(account.updatedAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void toggleDisabled(account.id, !account.disabled)}
+                      disabled={accountBusy}
+                      className={`rounded-lg px-3 py-1.5 text-xs font-bold text-white ${
+                        account.disabled ? "bg-emerald-600" : "bg-slate-600"
+                      }`}
+                    >
+                      {account.disabled ? "Enable" : "Disable"}
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-2">
+                  <input
+                    value={assignHospitalByUser[account.id] ?? ""}
+                    onChange={(e) =>
+                      setAssignHospitalByUser((prev) => ({
+                        ...prev,
+                        [account.id]: e.target.value,
+                      }))
+                    }
+                    className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs"
+                    placeholder="target hospital id"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void assignHospitalMembership(account.id)}
+                    disabled={accountBusy}
+                    className="rounded-lg border border-cyan-300 bg-cyan-50 px-2.5 py-1.5 text-xs font-bold text-cyan-800 disabled:opacity-60"
+                  >
+                    Add membership
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-base font-bold text-slate-900">Audit log (simple)</h2>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <p className="text-sm text-slate-600">
+            Recent actions in this hospital.
+            </p>
+            <a
+              href="/api/audit-logs/export"
+              className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Download CSV
+            </a>
+          </div>
+          <ul className="mt-4 space-y-2">
+            {auditEvents.map((event, idx) => (
+              <li key={`${event.at}-${idx}`} className="rounded-xl border border-slate-200 px-3 py-2">
+                <p className="text-xs text-slate-500">{new Date(event.at).toLocaleString()}</p>
+                <p className="text-sm font-semibold text-slate-800">
+                  {event.actorId} - {event.action} - {event.target}
+                </p>
+                {event.note && <p className="text-xs text-slate-600">{event.note}</p>}
+              </li>
+            ))}
+            {auditEvents.length === 0 && (
+              <li className="text-sm text-slate-500">No logs yet.</li>
+            )}
+          </ul>
         </section>
 
         <p className="pb-8 text-center text-xs text-slate-500">

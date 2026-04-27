@@ -5,6 +5,8 @@ export type AppRole = "nurse" | "family" | "patient";
 type SessionPayload = {
   role: AppRole;
   nurseId?: string;
+  hospitalId?: string;
+  hospitalIds?: string[];
   patientId?: string;
   patientName?: string;
   exp: number;
@@ -12,6 +14,7 @@ type SessionPayload = {
 
 type InvitePayload = {
   role: Extract<AppRole, "family" | "patient">;
+  hospitalId?: string;
   patientId?: string;
   patientName?: string;
   exp: number;
@@ -74,6 +77,8 @@ export function getSessionCookieName(): string {
 export function createSessionToken(input: {
   role: AppRole;
   nurseId?: string;
+  hospitalId?: string;
+  hospitalIds?: string[];
   patientId?: string;
   patientName?: string;
   ttlSec?: number;
@@ -82,6 +87,8 @@ export function createSessionToken(input: {
   const payload: SessionPayload = {
     role: input.role,
     nurseId: input.nurseId,
+    hospitalId: input.hospitalId,
+    hospitalIds: input.hospitalIds,
     patientId: input.patientId,
     patientName: input.patientName,
     exp: Math.floor(Date.now() / 1000) + ttlSec,
@@ -95,6 +102,7 @@ export function verifySessionToken(token: string): SessionPayload | null {
 
 export function createInviteToken(input: {
   role: Extract<AppRole, "family" | "patient">;
+  hospitalId?: string;
   patientId?: string;
   patientName?: string;
   ttlSec?: number;
@@ -102,6 +110,7 @@ export function createInviteToken(input: {
   const ttlSec = input.ttlSec ?? DEFAULT_INVITE_TTL_SEC;
   const payload: InvitePayload = {
     role: input.role,
+    hospitalId: input.hospitalId,
     patientId: input.patientId,
     patientName: input.patientName,
     exp: Math.floor(Date.now() / 1000) + ttlSec,

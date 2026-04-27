@@ -2,16 +2,18 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
 import {
+  addHospitalMembership,
   createNurseAccount,
   listNurseAccounts,
   updateNurseAccount,
 } from "@/lib/auth/nurseAccounts";
+import { appendAuditEvent } from "@/lib/audit/auditLog";
 
 async function requireNurseAuth() {
   const cookieStore = await cookies();
   const sessionToken = cookieStore.get(getSessionCookieName())?.value;
   const session = sessionToken ? verifySessionToken(sessionToken) : null;
-  if (!session || session.role !== "nurse") {
+  if (!session || session.role !== "nurse" || !session.hospitalId) {
     throw new Error("Staff sign-in required.");
   }
   return session;
@@ -19,8 +21,8 @@ async function requireNurseAuth() {
 
 export async function GET() {
   try {
-    await requireNurseAuth();
-    const accounts = await listNurseAccounts();
+    const session = await requireNurseAuth();
+    const accounts = await listNurseAccounts(session.hospitalId);
     return NextResponse.json({ ok: true, accounts });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Could not load accounts.";
@@ -35,11 +37,19 @@ type CreateBody = {
 
 export async function POST(req: Request) {
   try {
-    await requireNurseAuth();
+    const session = await requireNurseAuth();
     const body = (await req.json()) as CreateBody;
     const id = String(body.id ?? "").trim();
     const password = String(body.password ?? "");
-    const created = await createNurseAccount(id, password);
+    const created = await createNurseAccount(id, password, session.hospitalId);
+    await appendAuditEvent({
+      at: new Date().toISOString(),
+      hospitalId: session.hospitalId,
+      actorId: session.nurseId ?? "unknown",
+      actorRole: "nurse",
+      action: "nurse_account.create",
+      target: `nurse:${created.id}`,
+    });
     return NextResponse.json({ ok: true, account: created });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Could not create account.";
@@ -51,6 +61,7 @@ type PatchBody = {
   id?: string;
   disabled?: boolean;
   password?: string;
+  assignHospitalId?: string;
 };
 
 export async function PATCH(req: Request) {
@@ -67,10 +78,38 @@ export async function PATCH(req: Request) {
         { status: 400 },
       );
     }
+    const assignHospitalId = String(body.assignHospitalId ?? "").trim();
+    if (assignHospitalId) {
+      const createdMembership = await addHospitalMembership({
+        id,
+        fromHospitalId: session.hospitalId,
+        toHospitalId: assignHospitalId,
+      });
+      await appendAuditEvent({
+        at: new Date().toISOString(),
+        hospitalId: session.hospitalId,
+        actorId: session.nurseId ?? "unknown",
+        actorRole: "nurse",
+        action: "nurse_account.assign_hospital",
+        target: `nurse:${id}`,
+        note: `to=${assignHospitalId}`,
+      });
+      return NextResponse.json({ ok: true, account: createdMembership });
+    }
     const updated = await updateNurseAccount({
       id,
+      hospitalId: session.hospitalId,
       disabled: typeof body.disabled === "boolean" ? body.disabled : undefined,
       password: typeof body.password === "string" ? body.password : undefined,
+    });
+    await appendAuditEvent({
+      at: new Date().toISOString(),
+      hospitalId: session.hospitalId,
+      actorId: session.nurseId ?? "unknown",
+      actorRole: "nurse",
+      action: "nurse_account.update",
+      target: `nurse:${updated.id}`,
+      note: typeof body.disabled === "boolean" ? `disabled=${String(body.disabled)}` : "password_update",
     });
     return NextResponse.json({ ok: true, account: updated });
   } catch (error: unknown) {

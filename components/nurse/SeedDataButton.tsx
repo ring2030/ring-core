@@ -4,6 +4,7 @@ import { useState } from "react";
 import { writeBatch, doc, collection, Timestamp, getDocs } from "firebase/firestore";
 import { DatabaseZap, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 import { getFirestoreDb } from "@/lib/firebase";
+import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 
 // --- Demo seed templates (weighted random + realistic spread) ---
 
@@ -116,6 +117,7 @@ export default function SeedDataButton() {
 
     try {
       const db = getFirestoreDb();
+      const callsCollection = getCallsCollectionNameForCurrentHospital();
       const dailyCounts = [12, 14, 13, 16, 15, 18, 17]; // 105 total across 7 days
       const batchDocs: { ts: Timestamp; tpl: Template }[] = [];
 
@@ -131,7 +133,7 @@ export default function SeedDataButton() {
         const chunk = batchDocs.slice(i, i + CHUNK);
         const batch = writeBatch(db);
         chunk.forEach(({ ts, tpl }) => {
-          const ref = doc(collection(db, "calls"));
+          const ref = doc(collection(db, callsCollection));
           batch.set(ref, callDocPayload(ts, tpl));
         });
         await batch.commit();
@@ -154,7 +156,8 @@ export default function SeedDataButton() {
     setMessage("Deleting…");
     try {
       const db = getFirestoreDb();
-      const snap = await getDocs(collection(db, "calls"));
+      const callsCollection = getCallsCollectionNameForCurrentHospital();
+      const snap = await getDocs(collection(db, callsCollection));
       const CHUNK = 50;
       for (let i = 0; i < snap.docs.length; i += CHUNK) {
         const batch = writeBatch(db);
