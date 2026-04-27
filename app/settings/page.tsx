@@ -28,6 +28,8 @@ type NurseAccount = {
   id: string;
   hospitalId: string;
   disabled: boolean;
+  role: "hospital_admin" | "nurse" | "viewer";
+  mustChangePassword: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -58,6 +60,7 @@ export default function SettingsPage() {
   const [accountError, setAccountError] = useState<string | null>(null);
   const [newId, setNewId] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"hospital_admin" | "nurse" | "viewer">("nurse");
   const [assignHospitalByUser, setAssignHospitalByUser] = useState<Record<string, string>>({});
   const [accountBusy, setAccountBusy] = useState(false);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
@@ -124,12 +127,13 @@ export default function SettingsPage() {
       const res = await fetch("/api/nurse-accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: newId, password: newPassword }),
+        body: JSON.stringify({ id: newId, password: newPassword, role: newRole }),
       });
       const data = (await res.json()) as { ok: boolean; error?: string };
       if (!res.ok || !data.ok) throw new Error(data.error ?? "Could not create account.");
       setNewId("");
       setNewPassword("");
+      setNewRole("nurse");
       await Promise.all([loadAccounts(), loadAuditLogs()]);
     } catch (error: unknown) {
       setAccountError(error instanceof Error ? error.message : "Could not create account.");
@@ -526,6 +530,17 @@ export default function SettingsPage() {
               placeholder="New password"
               type="password"
             />
+            <select
+              value={newRole}
+              onChange={(e) =>
+                setNewRole(e.target.value as "hospital_admin" | "nurse" | "viewer")
+              }
+              className="rounded-xl border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="nurse">nurse</option>
+              <option value="hospital_admin">hospital_admin</option>
+              <option value="viewer">viewer</option>
+            </select>
             <button
               type="button"
               onClick={() => void createAccount()}
@@ -548,10 +563,15 @@ export default function SettingsPage() {
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="text-sm font-semibold text-slate-800">{account.id}</p>
+                    <p className="text-sm font-semibold text-slate-800">
+                      {account.id} <span className="text-xs font-normal text-slate-500">({account.role})</span>
+                    </p>
                     <p className="text-xs text-slate-500">
                       Updated {new Date(account.updatedAt).toLocaleString()}
                     </p>
+                    {account.mustChangePassword && (
+                      <p className="text-xs text-amber-700">Must change password on next sign-in</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button

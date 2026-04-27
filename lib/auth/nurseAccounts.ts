@@ -8,6 +8,8 @@ type StoredNurseAccount = {
   hospitalId: string;
   passwordHash: string;
   disabled: boolean;
+  role?: "hospital_admin" | "nurse" | "viewer";
+  mustChangePassword?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -20,9 +22,13 @@ export type NurseAccountView = {
   id: string;
   hospitalId: string;
   disabled: boolean;
+  role: "hospital_admin" | "nurse" | "viewer";
+  mustChangePassword: boolean;
   createdAt: string;
   updatedAt: string;
 };
+
+export type NurseRole = "hospital_admin" | "nurse" | "viewer";
 
 // Prefer /tmp (writable on Vercel/Lambda); fall back to local .data for dev
 const STORE_DIR = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
@@ -52,6 +58,10 @@ async function readStore(): Promise<NurseAccountStore> {
     if (!Array.isArray(parsed.accounts)) throw new Error("invalid store");
     for (const account of parsed.accounts) {
       if (!account.hospitalId) account.hospitalId = DEFAULT_HOSPITAL_ID;
+      if (!account.role) account.role = "nurse";
+      if (typeof account.mustChangePassword !== "boolean") {
+        account.mustChangePassword = false;
+      }
     }
     return parsed;
   } catch {
@@ -63,6 +73,8 @@ async function readStore(): Promise<NurseAccountStore> {
           hospitalId: DEFAULT_HOSPITAL_ID,
           passwordHash: hashPassword(DEFAULT_PASSWORD),
           disabled: false,
+          role: "hospital_admin",
+          mustChangePassword: false,
           createdAt: now,
           updatedAt: now,
         },
@@ -83,6 +95,8 @@ function toView(account: StoredNurseAccount): NurseAccountView {
     id: account.id,
     hospitalId: account.hospitalId,
     disabled: account.disabled,
+    role: account.role ?? "nurse",
+    mustChangePassword: account.mustChangePassword ?? false,
     createdAt: account.createdAt,
     updatedAt: account.updatedAt,
   };
@@ -96,11 +110,52 @@ export async function listNurseAccounts(hospitalId: string): Promise<NurseAccoun
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
+export async function getNurseRoleForHospital(
+  id: string,
+  password: string,
+  hospitalId: string,
+): Promise<NurseRole | null> {
+  const store = await readStore();
+  const passwordHash = hashPassword(password);
+  const account = store.accounts.find(
+    (a) =>
+      a.id === id &&
+      a.hospitalId === hospitalId &&
+      !a.disabled &&
+      a.passwordHash === passwordHash,
+  );
+  return account?.role ?? null;
+}
+
+export async function getNurseRoleByIdAndHospital(
+  id: string,
+  hospitalId: string,
+): Promise<NurseRole | null> {
+  const store = await readStore();
+  const account = store.accounts.find(
+    (a) => a.id === id && a.hospitalId === hospitalId && !a.disabled,
+  );
+  return account?.role ?? null;
+}
+
+export async function hasPasswordChangeRequirement(
+  id: string,
+  password: string,
+): Promise<boolean> {
+  const store = await readStore();
+  const passwordHash = hashPassword(password);
+  const matched = store.accounts.filter(
+    (a) => a.id === id && !a.disabled && a.passwordHash === passwordHash,
+  );
+  return matched.some((a) => a.mustChangePassword === true);
+}
+
 export async function verifyNurseCredentials(id: string, password: string): Promise<boolean> {
   const store = await readStore();
-  const account = store.accounts.find((a) => a.id === id);
-  if (!account || account.disabled) return false;
-  return account.passwordHash === hashPassword(password);
+  const passwordHash = hashPassword(password);
+  return store.accounts.some(
+    (account) => account.id === id && !account.disabled && account.passwordHash === passwordHash,
+  );
 }
 
 export async function listHospitalsForNurse(id: string, password: string): Promise<string[]> {
@@ -130,6 +185,8 @@ export async function createNurseAccount(
     hospitalId,
     passwordHash: hashPassword(password),
     disabled: false,
+    role: "nurse",
+    mustChangePassword: true,
     createdAt: now,
     updatedAt: now,
   };
@@ -143,6 +200,8 @@ export async function updateNurseAccount(args: {
   hospitalId: string;
   disabled?: boolean;
   password?: string;
+  role?: "hospital_admin" | "nurse" | "viewer";
+  mustChangePassword?: boolean;
 }): Promise<NurseAccountView> {
   const store = await readStore();
   const account = store.accounts.find(
@@ -152,6 +211,11 @@ export async function updateNurseAccount(args: {
   if (typeof args.disabled === "boolean") account.disabled = args.disabled;
   if (typeof args.password === "string" && args.password.length > 0) {
     account.passwordHash = hashPassword(args.password);
+    account.mustChangePassword = false;
+  }
+  if (typeof args.role === "string") account.role = args.role;
+  if (typeof args.mustChangePassword === "boolean") {
+    account.mustChangePassword = args.mustChangePassword;
   }
   account.updatedAt = new Date().toISOString();
   await writeStore(store);
@@ -183,10 +247,40 @@ export async function addHospitalMembership(args: {
     hospitalId: targetHospitalId,
     passwordHash: source.passwordHash,
     disabled: source.disabled,
+    role: source.role ?? "nurse",
+    mustChangePassword: source.mustChangePassword ?? false,
     createdAt: now,
     updatedAt: now,
   };
   store.accounts.push(created);
   await writeStore(store);
   return toView(created);
+}
+
+export async function changePasswordWithCurrent(args: {
+  id: string;
+  currentPassword: string;
+  newPassword: string;
+}): Promise<void> {
+  const id = args.id.trim();
+  if (!id) throw new Error("ID is required.");
+  if (args.newPassword.length < 10) {
+    throw new Error("New password must be at least 10 characters.");
+  }
+  const store = await readStore();
+  const currentHash = hashPassword(args.currentPassword);
+  const targets = store.accounts.filter(
+    (a) => a.id === id && !a.disabled && a.passwordHash === currentHash,
+  );
+  if (targets.length === 0) {
+    throw new Error("Current password is incorrect.");
+  }
+  const newHash = hashPassword(args.newPassword);
+  const now = new Date().toISOString();
+  for (const account of targets) {
+    account.passwordHash = newHash;
+    account.mustChangePassword = false;
+    account.updatedAt = now;
+  }
+  await writeStore(store);
 }

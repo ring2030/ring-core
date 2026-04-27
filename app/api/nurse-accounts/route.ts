@@ -16,6 +16,17 @@ async function requireNurseAuth() {
   if (!session || session.role !== "nurse" || !session.hospitalId) {
     throw new Error("Staff sign-in required.");
   }
+  return {
+    ...session,
+    hospitalId: session.hospitalId,
+  };
+}
+
+async function requireHospitalAdmin() {
+  const session = await requireNurseAuth();
+  if (session.nurseRole !== "hospital_admin") {
+    throw new Error("Hospital admin role is required.");
+  }
   return session;
 }
 
@@ -33,15 +44,24 @@ export async function GET() {
 type CreateBody = {
   id?: string;
   password?: string;
+  role?: "hospital_admin" | "nurse" | "viewer";
 };
 
 export async function POST(req: Request) {
   try {
-    const session = await requireNurseAuth();
+    const session = await requireHospitalAdmin();
     const body = (await req.json()) as CreateBody;
     const id = String(body.id ?? "").trim();
     const password = String(body.password ?? "");
     const created = await createNurseAccount(id, password, session.hospitalId);
+    if (body.role && body.role !== "nurse") {
+      await updateNurseAccount({
+        id: created.id,
+        hospitalId: session.hospitalId,
+        role: body.role,
+        mustChangePassword: true,
+      });
+    }
     await appendAuditEvent({
       at: new Date().toISOString(),
       hospitalId: session.hospitalId,
@@ -53,7 +73,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, account: created });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Could not create account.";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: message },
+      { status: message.includes("role is required") ? 403 : 400 },
+    );
   }
 }
 
@@ -62,11 +85,13 @@ type PatchBody = {
   disabled?: boolean;
   password?: string;
   assignHospitalId?: string;
+  role?: "hospital_admin" | "nurse" | "viewer";
+  mustChangePassword?: boolean;
 };
 
 export async function PATCH(req: Request) {
   try {
-    const session = await requireNurseAuth();
+    const session = await requireHospitalAdmin();
     const body = (await req.json()) as PatchBody;
     const id = String(body.id ?? "").trim();
     if (!id) {
@@ -101,6 +126,9 @@ export async function PATCH(req: Request) {
       hospitalId: session.hospitalId,
       disabled: typeof body.disabled === "boolean" ? body.disabled : undefined,
       password: typeof body.password === "string" ? body.password : undefined,
+      role: typeof body.role === "string" ? body.role : undefined,
+      mustChangePassword:
+        typeof body.mustChangePassword === "boolean" ? body.mustChangePassword : undefined,
     });
     await appendAuditEvent({
       at: new Date().toISOString(),
@@ -114,6 +142,9 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ ok: true, account: updated });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Update failed.";
-    return NextResponse.json({ ok: false, error: message }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: message },
+      { status: message.includes("role is required") ? 403 : 400 },
+    );
   }
 }

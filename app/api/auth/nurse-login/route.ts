@@ -1,13 +1,23 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createSessionToken, getSessionCookieName } from "@/lib/auth/tokens";
-import { listHospitalsForNurse, verifyNurseCredentials } from "@/lib/auth/nurseAccounts";
+import {
+  getNurseRoleForHospital,
+  hasPasswordChangeRequirement,
+  listHospitalsForNurse,
+  verifyNurseCredentials,
+} from "@/lib/auth/nurseAccounts";
 import {
   HOSPITAL_COOKIE_NAME,
   resolveHospitalIdForNurse,
   resolveHospitalIdsForNurseFromStaticMap,
 } from "@/lib/auth/hospitalScope";
 import { appendAuditEvent } from "@/lib/audit/auditLog";
+import {
+  clearLoginFailures,
+  getLoginLockRemainingSec,
+  recordLoginFailure,
+} from "@/lib/auth/loginSecurity";
 
 type LoginBody = {
   loginId?: string;
@@ -22,15 +32,47 @@ export async function POST(req: Request) {
     const password = String(body.password ?? "");
     if (!loginId || !password) {
       return NextResponse.json(
-        { ok: false, error: "Enter login ID and password." },
+        { ok: false, error: "Enter login ID and password.", errorCode: "MISSING_CREDENTIALS" },
         { status: 401 },
+      );
+    }
+    const lockRemainingSec = await getLoginLockRemainingSec(loginId);
+    if (lockRemainingSec > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Account locked. Try again in about ${Math.ceil(lockRemainingSec / 60)} min.`,
+          errorCode: "ACCOUNT_LOCKED",
+          lockRemainingSec,
+        },
+        { status: 423 },
       );
     }
     const ok = await verifyNurseCredentials(loginId, password);
     if (!ok) {
+      const lockResult = await recordLoginFailure(loginId);
       return NextResponse.json(
-        { ok: false, error: "Invalid login ID or password." },
+        lockResult.locked
+          ? {
+              ok: false,
+              error: "Too many failed attempts. Account locked for 15 minutes.",
+              errorCode: "ACCOUNT_LOCKED",
+              lockRemainingSec: lockResult.remainingSec,
+            }
+          : { ok: false, error: "Invalid login ID or password.", errorCode: "INVALID_CREDENTIALS" },
         { status: 401 },
+      );
+    }
+    await clearLoginFailures(loginId);
+    const mustChangePassword = await hasPasswordChangeRequirement(loginId, password);
+    if (mustChangePassword) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Password update required before sign-in. Enter a new password below.",
+          errorCode: "PASSWORD_CHANGE_REQUIRED",
+        },
+        { status: 403 },
       );
     }
 
@@ -42,9 +84,11 @@ export async function POST(req: Request) {
       (requestedHospitalId && hospitalIds.includes(requestedHospitalId)
         ? requestedHospitalId
         : hospitalIds[0]) ?? resolveHospitalIdForNurse(loginId);
+    const nurseRole = (await getNurseRoleForHospital(loginId, password, hospitalId)) ?? "nurse";
     const token = createSessionToken({
       role: "nurse",
       nurseId: loginId,
+      nurseRole,
       hospitalId,
       hospitalIds,
     });
@@ -72,7 +116,7 @@ export async function POST(req: Request) {
       target: "session",
     });
 
-    return NextResponse.json({ ok: true, nurseId: loginId, hospitalId, hospitalIds });
+    return NextResponse.json({ ok: true, nurseId: loginId, nurseRole, hospitalId, hospitalIds });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Sign-in failed.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });

@@ -5,6 +5,7 @@ export type AppRole = "nurse" | "family" | "patient";
 type SessionPayload = {
   role: AppRole;
   nurseId?: string;
+  nurseRole?: "hospital_admin" | "nurse" | "viewer";
   hospitalId?: string;
   hospitalIds?: string[];
   patientId?: string;
@@ -77,6 +78,7 @@ export function getSessionCookieName(): string {
 export function createSessionToken(input: {
   role: AppRole;
   nurseId?: string;
+  nurseRole?: "hospital_admin" | "nurse" | "viewer";
   hospitalId?: string;
   hospitalIds?: string[];
   patientId?: string;
@@ -87,6 +89,7 @@ export function createSessionToken(input: {
   const payload: SessionPayload = {
     role: input.role,
     nurseId: input.nurseId,
+    nurseRole: input.nurseRole,
     hospitalId: input.hospitalId,
     hospitalIds: input.hospitalIds,
     patientId: input.patientId,

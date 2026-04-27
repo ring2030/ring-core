@@ -16,6 +16,10 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
   const [inviteToken, setInviteToken] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPasswordReset, setShowPasswordReset] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetPending, setResetPending] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [titleTapCount, setTitleTapCount] = useState(0);
   const [showShoheiEasterEgg, setShowShoheiEasterEgg] = useState(false);
 
@@ -40,15 +44,44 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ loginId, password }),
       });
-      const json = (await res.json()) as { ok: boolean; error?: string };
+      const json = (await res.json()) as {
+        ok: boolean;
+        error?: string;
+        errorCode?: string;
+      };
       if (!res.ok || !json.ok) {
         setError(json.error ?? "Sign-in failed.");
+        setShowPasswordReset(json.errorCode === "PASSWORD_CHANGE_REQUIRED");
         return;
       }
       router.push(nextPath);
       router.refresh();
     } finally {
       setPending(false);
+    }
+  }
+
+  async function handlePasswordReset(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setResetPending(true);
+    setResetMessage(null);
+    try {
+      const res = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ loginId, currentPassword: password, newPassword }),
+      });
+      const json = (await res.json()) as { ok: boolean; error?: string };
+      if (!res.ok || !json.ok) {
+        setResetMessage(json.error ?? "Could not change password.");
+        return;
+      }
+      setResetMessage("Password updated. Sign in again with the new password.");
+      setPassword(newPassword);
+      setNewPassword("");
+      setShowPasswordReset(false);
+    } finally {
+      setResetPending(false);
     }
   }
 
@@ -114,6 +147,28 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
           <div className="mt-5 text-xs text-slate-400">
             Demo account: ID <code>1</code> / password <code>1</code>.
           </div>
+          {showPasswordReset && (
+            <form className="mt-4 space-y-3 rounded-xl border border-amber-300/40 bg-amber-500/10 p-3" onSubmit={handlePasswordReset}>
+              <p className="text-xs text-amber-100">
+                Security policy requires setting a new password before sign-in.
+              </p>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2.5 text-sm outline-none ring-cyan-400 focus:ring"
+                placeholder="New password (10+ chars)"
+              />
+              <button
+                type="submit"
+                disabled={resetPending}
+                className="w-full rounded-xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-950 disabled:opacity-60"
+              >
+                {resetPending ? "Updating…" : "Update password"}
+              </button>
+              {resetMessage && <p className="text-xs text-amber-100">{resetMessage}</p>}
+            </form>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-800 bg-slate-900/80 p-6 shadow-2xl">

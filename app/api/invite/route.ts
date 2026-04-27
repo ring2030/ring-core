@@ -25,6 +25,12 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
+    if (session.nurseRole !== "hospital_admin") {
+      return NextResponse.json(
+        { ok: false, error: "Hospital admin role is required to create invites." },
+        { status: 403 },
+      );
+    }
 
     const body = (await req.json()) as InviteBody;
     const role = body.role === "patient" ? "patient" : "family";

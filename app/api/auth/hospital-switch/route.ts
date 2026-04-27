@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createSessionToken, getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
 import { HOSPITAL_COOKIE_NAME } from "@/lib/auth/hospitalScope";
 import { appendAuditEvent } from "@/lib/audit/auditLog";
+import { getNurseRoleByIdAndHospital } from "@/lib/auth/nurseAccounts";
 
 type SwitchBody = {
   hospitalId?: string;
@@ -47,6 +48,8 @@ export async function POST(req: Request) {
     const token = createSessionToken({
       role: "nurse",
       nurseId: session.nurseId,
+      nurseRole:
+        (await getNurseRoleByIdAndHospital(session.nurseId ?? "", target)) ?? session.nurseRole,
       hospitalId: target,
       hospitalIds,
       ttlSec: 60 * 60 * 12,

@@ -46,6 +46,7 @@ The default **patient UI is English**. Legacy Japanese labels in Firestore are n
 
 Deeper design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Stack detail: [docs/TECH_STACK.md](docs/TECH_STACK.md)
 PoC docs (JA): [docs/poc-spec-contest-ja.md](docs/poc-spec-contest-ja.md) · [docs/poc-demo-checklist-ja.md](docs/poc-demo-checklist-ja.md) · [docs/poc-ops-runbook-ja.md](docs/poc-ops-runbook-ja.md)
+Regression log (JA): [docs/regression-test-report-2026-04-27.md](docs/regression-test-report-2026-04-27.md)
 
 ---
 
@@ -113,6 +114,7 @@ For a scripted demo, use `/demo` or `/demo-1min` if your deployment includes tho
 | `POST /api/invite` | Create invite token (**nurse session required**) |
 | `GET /api/invite/consume?token=…` | Validate token, set cookie, redirect |
 | `POST /api/auth/nurse-login` · `POST /api/auth/logout` | Session cookie |
+| `POST /api/auth/change-password` | Complete mandatory password update flow |
 | `GET` / `POST /api/auth/hospital-switch` | Nurse hospital membership read/switch |
 | `GET` · `POST` · `PATCH /api/nurse-accounts` | Account admin (**nurse session required**) |
 | `GET /api/audit-logs` · `GET /api/audit-logs/export` | Audit log list + CSV export |
