@@ -27,6 +27,7 @@ import { getFirebaseAuth, getFirestoreDb } from "@/lib/firebase";
 import { normalizeCallDoc } from "@/lib/calls/schema";
 import { emojiForReason } from "@/lib/calls/reasons";
 import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
+import { buildNurseAnalytics } from "@/lib/dashboard/nurseAnalytics";
 
 // ─── Patient roster (demo) ───────────────────────────────────────────────────
 
@@ -44,28 +45,6 @@ const PATIENTS: Patient[] = [
   { id: "tome", name: "Taro Murase", room: "102", age: 78, condition: "Lewy body dementia", senderNames: ["Taro", "ムラセタロウ", "トメ", "とめ"] },
   { id: "hanako", name: "Hanako Miyakita", room: "103", age: 85, condition: "Vascular dementia", senderNames: ["Hanako", "ミヤキタジロウ", "花子", "はなこ"] },
 ];
-
-// ─── Mock analytics (demo) ───────────────────────────────────────────────────
-
-const DETAIL_REASON_DATA = [
-  { name: "Toileting assistance", value: 28, color: "#f97316", emoji: "🚽" },
-  { name: "Listening / conversation", value: 22, color: "#60a5fa", emoji: "💬" },
-  { name: "Easing anxiety / loneliness", value: 18, color: "#a78bfa", emoji: "🤝" },
-  { name: "Hydration / meal support", value: 12, color: "#34d399", emoji: "💧" },
-  { name: "Pain / condition care", value: 8, color: "#f87171", emoji: "🚨" },
-  { name: "Other", value: 6, color: "#94a3b8", emoji: "📋" },
-];
-
-const MONTHLY_COMPARISON = [
-  { month: "Apr", urgent: 45, aiComfort: 0 },
-  { month: "May", urgent: 48, aiComfort: 0 },
-  { month: "Jun", urgent: 31, aiComfort: 17 },
-  { month: "Jul", urgent: 19, aiComfort: 36 },
-  { month: "Aug", urgent: 17, aiComfort: 38 },
-  { month: "Sep", urgent: 14, aiComfort: 40 },
-];
-
-const KPI = { aiResolvedRate: 74, reducedVisits: 31, savedMinutes: 155 } as const;
 
 // ─── ユーティリティ ───────────────────────────────────────────────────────────
 
@@ -102,6 +81,7 @@ export default function NurseDashboard() {
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
+  const useLiveAnalytics = process.env.NEXT_PUBLIC_NURSE_ANALYTICS_LIVE === "1";
   const initResult = useMemo(() => {
     try {
       return {
@@ -249,6 +229,10 @@ export default function NurseDashboard() {
   }, [calls]);
 
   const hasEmergency = patientData.some((p) => p.maxPriority >= 4);
+  const analytics = useMemo(
+    () => buildNurseAnalytics(calls, useLiveAnalytics),
+    [calls, useLiveAnalytics],
+  );
 
   // ── チャート集計 ──────────────────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -489,9 +473,12 @@ export default function NurseDashboard() {
                 <Sparkles className="h-4 w-4 text-violet-400" /> AI impact (demo data)
               </h2>
               <StatusBadge tone="accent" className="px-3 py-1">
-                Apr–Sep totals
+                {useLiveAnalytics ? "Live aggregate" : "Apr–Sep totals"}
               </StatusBadge>
             </div>
+            <p className="mb-3 text-[11px] text-stone-400">
+              Data source: {useLiveAnalytics ? "Firestore live aggregation" : "Demo mock values"}
+            </p>
 
             <div className="grid gap-6 md:grid-cols-2">
 
@@ -501,14 +488,16 @@ export default function NurseDashboard() {
                   <Activity className="h-4 w-4 text-rose-400" />
                   Reason breakdown
                 </h3>
-                <p className="mb-5 text-[11px] text-stone-400">Six categories from AI summaries (94 calls total)</p>
+                <p className="mb-5 text-[11px] text-stone-400">
+                  Six categories from AI summaries ({analytics.totalReasonCount} calls total)
+                </p>
 
                 {/* ResponsiveContainerはminHeight付きdivでラップ（Recharts警告対策） */}
                 <div style={{ width: "100%", minHeight: 192 }}>
                   <ResponsiveContainer width="99%" height={192}>
                     <PieChart>
-                      <Pie data={DETAIL_REASON_DATA} innerRadius={52} outerRadius={76} paddingAngle={4} dataKey="value" stroke="none">
-                        {DETAIL_REASON_DATA.map((d, i) => <Cell key={i} fill={d.color} />)}
+                      <Pie data={analytics.reasonData} innerRadius={52} outerRadius={76} paddingAngle={4} dataKey="value" stroke="none">
+                        {analytics.reasonData.map((d, i) => <Cell key={i} fill={d.color} />)}
                       </Pie>
                       <Tooltip formatter={(value) => [`${value} calls`]} contentStyle={{ backgroundColor: "#fff", border: "1px solid #e7e5e4", borderRadius: "12px", fontSize: "12px" }} />
                     </PieChart>
@@ -516,8 +505,9 @@ export default function NurseDashboard() {
                 </div>
 
                 <div className="mt-3 space-y-1.5">
-                  {DETAIL_REASON_DATA.map((d) => {
-                    const pct = Math.round((d.value / 94) * 100);
+                  {analytics.reasonData.map((d) => {
+                    const base = Math.max(analytics.totalReasonCount, 1);
+                    const pct = Math.round((d.value / base) * 100);
                     return (
                       <div key={d.name} className="flex items-center gap-2.5">
                         <span className="text-sm">{d.emoji}</span>
@@ -545,9 +535,9 @@ export default function NurseDashboard() {
 
                 <div className="grid grid-cols-3 gap-2">
                   {[
-                    { value: `${KPI.aiResolvedRate}%`, label: "Calls\ncomforted by AI", bg: "from-violet-50 to-violet-100 border-violet-100", text: "text-violet-700" },
-                    { value: `${KPI.reducedVisits}`, label: "Fewer\nvisits/mo", bg: "from-emerald-50 to-emerald-100 border-emerald-100", text: "text-emerald-700" },
-                    { value: `${KPI.savedMinutes}m`, label: "Staff time\nsaved/mo", bg: "from-sky-50 to-sky-100 border-sky-100", text: "text-sky-700" },
+                    { value: `${analytics.kpi.aiResolvedRate}%`, label: "Calls\ncomforted by AI", bg: "from-violet-50 to-violet-100 border-violet-100", text: "text-violet-700" },
+                    { value: `${analytics.kpi.reducedVisits}`, label: "Fewer\nvisits/mo", bg: "from-emerald-50 to-emerald-100 border-emerald-100", text: "text-emerald-700" },
+                    { value: `${analytics.kpi.savedMinutes}m`, label: "Staff time\nsaved/mo", bg: "from-sky-50 to-sky-100 border-sky-100", text: "text-sky-700" },
                   ].map((k) => (
                     <div key={k.label} className={`rounded-2xl bg-gradient-to-br border p-3 text-center ${k.bg}`}>
                       <p className={`text-xl font-black ${k.text}`}>{k.value}</p>
@@ -560,7 +550,7 @@ export default function NurseDashboard() {
                   <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-stone-400">Monthly mix</p>
                   <div style={{ width: "100%", minHeight: 176 }}>
                     <ResponsiveContainer width="99%" height={176}>
-                      <BarChart data={MONTHLY_COMPARISON} barGap={2}>
+                      <BarChart data={analytics.monthlyComparison} barGap={2}>
                         <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f5f5f4" />
                         <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10, fontWeight: "bold" }} />
                         <YAxis axisLine={false} tickLine={false} tick={{ fill: "#a8a29e", fontSize: 10 }} width={24} />
@@ -575,7 +565,7 @@ export default function NurseDashboard() {
 
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
                   <p className="text-[11px] font-bold leading-relaxed text-emerald-700">
-                    💡 Avg. <strong>{KPI.reducedVisits}</strong> fewer in-person visits per month — more time for hands-on care.
+                    💡 Avg. <strong>{analytics.kpi.reducedVisits}</strong> fewer in-person visits per month — more time for hands-on care.
                   </p>
                 </div>
               </div>

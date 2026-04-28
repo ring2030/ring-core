@@ -6,7 +6,7 @@ import { getFirestoreDb } from "@/lib/firebase";
 import { buildCallWritePayload } from "@/lib/calls/schema";
 import { triageFromTranscript } from "@/lib/kiyoko/triageFromTranscript";
 
-const REASSURANCE = "The nurse team knows. You can rest easy.";
+const REASSURANCE = "The nurse team has been notified. You are safe. Please relax.";
 
 /** Silence timeout: if no usable speech, still submit partial or empty transcript. */
 const ABSOLUTE_LISTEN_MS = 26000;
@@ -39,11 +39,25 @@ function speakReassurance() {
   speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(REASSURANCE);
   u.lang = "en-US";
-  u.rate = 0.95;
+  u.rate = 0.88;
+  u.pitch = 1.0;
+  u.volume = 1.0;
+  const voices = speechSynthesis.getVoices();
+  const preferred = voices.find((v) => v.lang === "en-US" && /zira|aria|samantha|jenny|emma/i.test(v.name))
+    ?? voices.find((v) => v.lang === "en-US")
+    ?? voices.find((v) => v.lang.startsWith("en"));
+  if (preferred) u.voice = preferred;
   speechSynthesis.speak(u);
 }
 
-function FamilyFaceHero() {
+type HeroMode = "listening" | "speaking" | "reassurance";
+
+function FamilyFaceHero({ mode }: { mode: HeroMode }) {
+  const familyPhotoUrl = process.env.NEXT_PUBLIC_FAMILY_PHOTO_URL?.trim();
+  const isSpeaking = mode === "speaking";
+  const isListening = mode === "listening";
+  const isReassurance = mode === "reassurance";
+
   return (
     <div
       className="relative mx-auto aspect-square w-full max-w-[min(72vmin,420px)] overflow-hidden rounded-full border-[6px] border-white shadow-2xl ring-4 ring-amber-200/80"
@@ -52,29 +66,59 @@ function FamilyFaceHero() {
           "linear-gradient(160deg, #fef9c3 0%, #fde047 40%, #f59e0b 85%, #b45309 100%)",
       }}
     >
+      {familyPhotoUrl && (
+        <img
+          src={familyPhotoUrl}
+          alt="Family photo"
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+            isReassurance ? "opacity-85" : "opacity-65"
+          }`}
+        />
+      )}
+      <div
+        className={`absolute inset-0 ${
+          isListening
+            ? "bg-white/8"
+            : isSpeaking
+              ? "bg-rose-100/12"
+              : "bg-emerald-100/16"
+        }`}
+      />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pb-[8%]">
         <div className="flex flex-wrap items-end justify-center gap-4 px-4 sm:gap-6">
           <span
-            className="text-[min(18vmin,7rem)] leading-none drop-shadow-lg"
+            className={`text-[min(20vmin,8rem)] leading-none drop-shadow-lg ${
+              isListening ? "motion-safe:animate-[kiyoko-bob_1.2s_ease-in-out_infinite]" : ""
+            }`}
             aria-hidden
           >
             👴
           </span>
           <span
-            className="text-[min(22vmin,8.5rem)] leading-none drop-shadow-lg"
+            className={`text-[min(25vmin,10rem)] leading-none drop-shadow-lg ${
+              isSpeaking
+                ? "motion-safe:animate-[kiyoko-talk_0.24s_ease-in-out_infinite]"
+                : isReassurance
+                  ? "motion-safe:animate-[kiyoko-pulse_0.9s_ease-in-out_infinite]"
+                  : ""
+            }`}
             aria-hidden
           >
             👵
           </span>
           <span
-            className="text-[min(18vmin,7rem)] leading-none drop-shadow-lg"
+            className={`text-[min(20vmin,8rem)] leading-none drop-shadow-lg ${
+              isListening ? "motion-safe:animate-[kiyoko-bob_1.2s_ease-in-out_infinite_0.15s]" : ""
+            }`}
             aria-hidden
           >
             👧
           </span>
         </div>
         <p className="mt-2 px-4 text-center text-sm font-semibold text-amber-950/75 sm:text-base">
-          Family faces (placeholder — swap for photos later)
+          {familyPhotoUrl
+            ? "Family photo with supportive animation"
+            : "Family faces (set NEXT_PUBLIC_FAMILY_PHOTO_URL to use a real photo)"}
         </p>
       </div>
     </div>
@@ -263,6 +307,26 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       aria-modal="true"
       aria-labelledby="voice-modal-title"
     >
+      <style>{`
+        @keyframes kiyoko-bob {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-10px) scale(1.06); }
+        }
+        @keyframes kiyoko-talk {
+          0%, 100% { transform: scale(1) translateY(0) rotate(0deg); }
+          25% { transform: scale(1.12, 0.88) translateY(2px) rotate(-1deg); }
+          50% { transform: scale(0.9, 1.14) translateY(-2px) rotate(1deg); }
+          75% { transform: scale(1.1, 0.9) translateY(1px) rotate(-1deg); }
+        }
+        @keyframes kiyoko-pulse {
+          0%, 100% { transform: scale(1); filter: brightness(1); }
+          50% { transform: scale(1.09); filter: brightness(1.08); }
+        }
+        @keyframes kiyoko-ring {
+          0% { transform: scale(0.86); opacity: 0.7; }
+          100% { transform: scale(1.24); opacity: 0; }
+        }
+      `}</style>
       <div className="flex shrink-0 justify-end">
         <button
           type="button"
@@ -277,6 +341,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto py-4">
         {phase === "reassurance" ? (
           <div className="flex w-full max-w-3xl flex-col items-center gap-8 px-2 text-center motion-safe:animate-[kiyoko-success-reveal_0.45s_ease-out_both]">
+            <FamilyFaceHero mode="reassurance" />
             <p
               id="voice-modal-title"
               className="text-[clamp(1.25rem,5.5vmin,2rem)] font-bold leading-snug text-amber-100"
@@ -299,6 +364,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
           </div>
         ) : phase === "saving" ? (
           <div className="flex flex-col items-center gap-4 text-white">
+            <FamilyFaceHero mode="speaking" />
             <div
               className="size-16 animate-spin rounded-full border-4 border-white/20 border-t-amber-300"
               aria-hidden
@@ -329,7 +395,11 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
             <h2 id="voice-modal-title" className="sr-only">
               Speak to send
             </h2>
-            <FamilyFaceHero />
+            <div className="relative">
+              <span className="pointer-events-none absolute inset-0 rounded-full border-4 border-rose-200/70 motion-safe:animate-[kiyoko-ring_1.1s_ease-out_infinite]" />
+              <span className="pointer-events-none absolute inset-0 rounded-full border-4 border-rose-200/50 motion-safe:animate-[kiyoko-ring_1.1s_ease-out_infinite_0.35s]" />
+            <FamilyFaceHero mode={liveText ? "speaking" : "listening"} />
+            </div>
             <div className="w-full max-w-xl px-2 text-center">
               <p className="text-xl font-bold text-white sm:text-2xl">
                 Mic on · listening
