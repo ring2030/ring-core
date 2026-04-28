@@ -3,9 +3,10 @@ import { buildHighlight, dateLabel } from "./historyUtils";
 
 describe("historyUtils", () => {
   it("formats date label in English style", () => {
-    const label = dateLabel(new Date("2026-04-10T00:00:00+09:00"));
+    // Use local Date constructor to avoid CI timezone drift.
+    const label = dateLabel(new Date(2026, 3, 10));
     expect(label).toContain("2026/04/10");
-    expect(label).toMatch(/\(Fri\)|\(Thu\)/);
+    expect(label).toContain("(Fri)");
   });
 
   it("returns calm message when no calls", () => {
