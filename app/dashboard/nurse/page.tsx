@@ -568,6 +568,30 @@ export default function NurseDashboard() {
                     💡 Avg. <strong>{analytics.kpi.reducedVisits}</strong> fewer in-person visits per month — more time for hands-on care.
                   </p>
                 </div>
+                <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-violet-700">
+                    <span>Care relief score</span>
+                    <span>{analytics.kpi.careReliefScore}/100</span>
+                  </div>
+                  <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-violet-100">
+                    <div
+                      className="h-full rounded-full bg-violet-500 transition-all duration-700"
+                      style={{ width: `${Math.max(0, Math.min(100, analytics.kpi.careReliefScore))}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-[10px] text-violet-700/90">
+                    Empathy coverage {analytics.kpi.empathyCoverage}% (AI-supported calming interactions)
+                  </p>
+                  <p
+                    className={`mt-1 text-[10px] font-bold ${
+                      analytics.scoreDeltaVsYesterday >= 0 ? "text-emerald-700" : "text-rose-700"
+                    }`}
+                  >
+                    {analytics.scoreDeltaVsYesterday >= 0 ? "▲" : "▼"} vs yesterday:{" "}
+                    {analytics.scoreDeltaVsYesterday >= 0 ? "+" : ""}
+                    {analytics.scoreDeltaVsYesterday}
+                  </p>
+                </div>
               </div>
             </div>
           </section>

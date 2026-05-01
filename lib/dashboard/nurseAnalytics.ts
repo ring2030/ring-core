@@ -21,6 +21,8 @@ type NurseKpi = {
   aiResolvedRate: number;
   reducedVisits: number;
   savedMinutes: number;
+  careReliefScore: number;
+  empathyCoverage: number;
 };
 
 export type NurseAnalytics = {
@@ -28,6 +30,7 @@ export type NurseAnalytics = {
   monthlyComparison: MonthlyPoint[];
   kpi: NurseKpi;
   totalReasonCount: number;
+  scoreDeltaVsYesterday: number;
 };
 
 const MOCK_REASON_DATA: ReasonSlice[] = [
@@ -48,7 +51,13 @@ const MOCK_MONTHLY_COMPARISON: MonthlyPoint[] = [
   { month: "Sep", urgent: 14, aiComfort: 40 },
 ];
 
-const MOCK_KPI: NurseKpi = { aiResolvedRate: 74, reducedVisits: 31, savedMinutes: 155 };
+const MOCK_KPI: NurseKpi = {
+  aiResolvedRate: 74,
+  reducedVisits: 31,
+  savedMinutes: 155,
+  careReliefScore: 82,
+  empathyCoverage: 88,
+};
 
 const REASON_CATEGORIES: Array<{
   name: string;
@@ -132,13 +141,28 @@ function buildLiveMonthlyComparison(calls: NurseCall[]): MonthlyPoint[] {
 
 function buildLiveKpi(calls: NurseCall[]): NurseKpi {
   const total = calls.length;
-  if (total === 0) return { aiResolvedRate: 0, reducedVisits: 0, savedMinutes: 0 };
+  if (total === 0) {
+    return {
+      aiResolvedRate: 0,
+      reducedVisits: 0,
+      savedMinutes: 0,
+      careReliefScore: 0,
+      empathyCoverage: 0,
+    };
+  }
   const aiHandled = calls.filter((c) => c.priority <= 2).length;
   const reducedVisits = aiHandled;
+  const urgentCalls = calls.filter((c) => c.priority >= 4).length;
+  const mediumCalls = calls.filter((c) => c.priority === 3).length;
+  const responsivenessScore = Math.max(0, 100 - urgentCalls * 2 - mediumCalls);
+  const empathyCoverage = Math.round((aiHandled / total) * 100);
+  const careReliefScore = Math.round((responsivenessScore * 0.55) + (empathyCoverage * 0.45));
   return {
     aiResolvedRate: Math.round((aiHandled / total) * 100),
     reducedVisits,
     savedMinutes: reducedVisits * 5,
+    careReliefScore,
+    empathyCoverage,
   };
 }
 
@@ -149,14 +173,29 @@ export function buildNurseAnalytics(calls: NurseCall[], useLiveAnalytics: boolea
       monthlyComparison: MOCK_MONTHLY_COMPARISON,
       kpi: MOCK_KPI,
       totalReasonCount: MOCK_REASON_DATA.reduce((sum, item) => sum + item.value, 0),
+      scoreDeltaVsYesterday: 6,
     };
   }
   const reasonData = buildLiveReasonData(calls);
+  const kpi = buildLiveKpi(calls);
+  const now = new Date();
+  const isYesterday = (d: Date) => {
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    return (
+      d.getFullYear() === y.getFullYear() &&
+      d.getMonth() === y.getMonth() &&
+      d.getDate() === y.getDate()
+    );
+  };
+  const yesterdayCalls = calls.filter((c) => isYesterday(c.date));
+  const yesterdayScore = buildLiveKpi(yesterdayCalls).careReliefScore;
   return {
     reasonData,
     monthlyComparison: buildLiveMonthlyComparison(calls),
-    kpi: buildLiveKpi(calls),
+    kpi,
     totalReasonCount: reasonData.reduce((sum, item) => sum + item.value, 0),
+    scoreDeltaVsYesterday: kpi.careReliefScore - yesterdayScore,
   };
 }
 

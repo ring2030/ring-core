@@ -71,6 +71,11 @@ Regression log (JA): [docs/regression-test-report-2026-04-27.md](docs/regression
 4. **Family** — Staff-generated invites; family views under `/dashboard/family` and `/dashboard/history` after sign-in / token flow via `/login` and `/access?token=…`.
 
 For a scripted demo, use `/demo` or `/demo-1min` if your deployment includes those routes.
+The 60-second judge-friendly flow is available at [`/demo-1min`](http://localhost:3000/demo-1min) in local development.
+`/demo-1min` also includes a **30-second post-demo survey** to collect implementation evidence (impact, trust, adoption intent).
+Production demo links:
+- [`https://ring-core2026.vercel.app/demo-1min`](https://ring-core2026.vercel.app/demo-1min) (60-second walkthrough)
+- [`https://ring-core2026.vercel.app/demo`](https://ring-core2026.vercel.app/demo) (screen-record style demo page)
 
 ---
 
@@ -118,6 +123,7 @@ For a scripted demo, use `/demo` or `/demo-1min` if your deployment includes tho
 | `GET` / `POST /api/auth/hospital-switch` | Nurse hospital membership read/switch |
 | `GET` · `POST` · `PATCH /api/nurse-accounts` | Account admin (**nurse session required**) |
 | `GET /api/audit-logs` · `GET /api/audit-logs/export` | Audit log list + CSV export |
+| `GET` / `POST /api/demo-feedback` | Stores and returns quick aggregate of 30-second survey results |
 
 **External APIs (configure, not in repo):** default Gemini base `https://generativelanguage.googleapis.com/v1beta` (override with `GEMINI_API_BASE`); Firebase & Eyedid configured in their consoles.
 

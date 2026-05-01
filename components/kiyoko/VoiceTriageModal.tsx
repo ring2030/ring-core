@@ -51,16 +51,29 @@ function speakReassurance() {
 }
 
 type HeroMode = "listening" | "speaking" | "reassurance";
+type CompanionTone = "calm" | "supportive" | "urgent";
 
-function FamilyFaceHero({ mode }: { mode: HeroMode }) {
+function FamilyFaceHero({ mode, tone }: { mode: HeroMode; tone: CompanionTone }) {
   const familyPhotoUrl = process.env.NEXT_PUBLIC_FAMILY_PHOTO_URL?.trim();
   const isSpeaking = mode === "speaking";
   const isListening = mode === "listening";
   const isReassurance = mode === "reassurance";
+  const toneOverlay =
+    tone === "urgent"
+      ? "bg-red-100/16"
+      : tone === "calm"
+        ? "bg-cyan-100/14"
+        : "bg-amber-100/16";
+  const toneRing =
+    tone === "urgent"
+      ? "ring-red-200/80"
+      : tone === "calm"
+        ? "ring-cyan-200/80"
+        : "ring-amber-200/80";
 
   return (
     <div
-      className="relative mx-auto aspect-square w-full max-w-[min(72vmin,420px)] overflow-hidden rounded-full border-[6px] border-white shadow-2xl ring-4 ring-amber-200/80"
+      className={`relative mx-auto aspect-square w-full max-w-[min(72vmin,420px)] overflow-hidden rounded-full border-[6px] border-white shadow-2xl ring-4 ${toneRing}`}
       style={{
         background:
           "linear-gradient(160deg, #fef9c3 0%, #fde047 40%, #f59e0b 85%, #b45309 100%)",
@@ -75,15 +88,7 @@ function FamilyFaceHero({ mode }: { mode: HeroMode }) {
           }`}
         />
       )}
-      <div
-        className={`absolute inset-0 ${
-          isListening
-            ? "bg-white/8"
-            : isSpeaking
-              ? "bg-rose-100/12"
-              : "bg-emerald-100/16"
-        }`}
-      />
+      <div className={`absolute inset-0 ${toneOverlay}`} />
       <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pb-[8%]">
         <div className="flex flex-wrap items-end justify-center gap-4 px-4 sm:gap-6">
           <span
@@ -136,6 +141,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
   const [phase, setPhase] = useState<Phase>("listen");
   const [liveText, setLiveText] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
+  const [companionTone, setCompanionTone] = useState<CompanionTone>("supportive");
 
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const processedRef = useRef(false);
@@ -156,6 +162,12 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
     recognitionRef.current = null;
   }, []);
 
+  const inferCompanionTone = useCallback((transcript: string, urgency: "high" | "low"): CompanionTone => {
+    if (urgency === "high") return "urgent";
+    if (/lonely|anxious|scared|寂|不安|こわ/i.test(transcript)) return "supportive";
+    return "calm";
+  }, []);
+
   const runPipeline = useCallback(async () => {
     if (processedRef.current) return;
     processedRef.current = true;
@@ -163,6 +175,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
     cleanupRecognition();
     setPhase("saving");
     const triage = triageFromTranscript(transcript);
+    setCompanionTone(inferCompanionTone(transcript, triage.urgency));
     try {
       await saveVoiceCall(triage);
     } catch (e) {
@@ -176,7 +189,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
     }
     setPhase("reassurance");
     speakReassurance();
-  }, [cleanupRecognition]);
+  }, [cleanupRecognition, inferCompanionTone]);
 
   useEffect(() => {
     if (!open) {
@@ -190,6 +203,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
         setPhase("listen");
         setLiveText("");
         setErrorDetail("");
+        setCompanionTone("supportive");
       });
       return;
     }
@@ -202,6 +216,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       setPhase("listen");
       setLiveText("");
       setErrorDetail("");
+      setCompanionTone("supportive");
     });
 
     const Ctor = getSpeechRecognitionCtor();
@@ -300,6 +315,13 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
 
   if (!open) return null;
 
+  const toneBadge =
+    companionTone === "urgent"
+      ? { label: "Urgent support mode", cls: "border-red-200 bg-red-50 text-red-700" }
+      : companionTone === "calm"
+        ? { label: "Calm companion mode", cls: "border-cyan-200 bg-cyan-50 text-cyan-700" }
+        : { label: "Empathy companion mode", cls: "border-amber-200 bg-amber-50 text-amber-800" };
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 p-4 motion-safe:animate-[kiyoko-backdrop-in_0.2s_ease-out_both]"
@@ -341,7 +363,10 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto py-4">
         {phase === "reassurance" ? (
           <div className="flex w-full max-w-3xl flex-col items-center gap-8 px-2 text-center motion-safe:animate-[kiyoko-success-reveal_0.45s_ease-out_both]">
-            <FamilyFaceHero mode="reassurance" />
+            <FamilyFaceHero mode="reassurance" tone={companionTone} />
+            <span className={`rounded-full border px-3 py-1 text-xs font-bold ${toneBadge.cls}`}>
+              {toneBadge.label}
+            </span>
             <p
               id="voice-modal-title"
               className="text-[clamp(1.25rem,5.5vmin,2rem)] font-bold leading-snug text-amber-100"
@@ -364,7 +389,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
           </div>
         ) : phase === "saving" ? (
           <div className="flex flex-col items-center gap-4 text-white">
-            <FamilyFaceHero mode="speaking" />
+            <FamilyFaceHero mode="speaking" tone={companionTone} />
             <div
               className="size-16 animate-spin rounded-full border-4 border-white/20 border-t-amber-300"
               aria-hidden
@@ -396,11 +421,32 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
               Speak to send
             </h2>
             <div className="relative">
-              <span className="pointer-events-none absolute inset-0 rounded-full border-4 border-rose-200/70 motion-safe:animate-[kiyoko-ring_1.1s_ease-out_infinite]" />
-              <span className="pointer-events-none absolute inset-0 rounded-full border-4 border-rose-200/50 motion-safe:animate-[kiyoko-ring_1.1s_ease-out_infinite_0.35s]" />
-            <FamilyFaceHero mode={liveText ? "speaking" : "listening"} />
+              <span
+                className={`pointer-events-none absolute inset-0 rounded-full border-4 motion-safe:animate-[kiyoko-ring_1.1s_ease-out_infinite] ${
+                  companionTone === "urgent"
+                    ? "border-red-200/70"
+                    : companionTone === "calm"
+                      ? "border-cyan-200/70"
+                      : "border-amber-200/70"
+                }`}
+              />
+              <span
+                className={`pointer-events-none absolute inset-0 rounded-full border-4 motion-safe:animate-[kiyoko-ring_1.1s_ease-out_infinite_0.35s] ${
+                  companionTone === "urgent"
+                    ? "border-red-200/50"
+                    : companionTone === "calm"
+                      ? "border-cyan-200/50"
+                      : "border-amber-200/50"
+                }`}
+              />
+              <FamilyFaceHero mode={liveText ? "speaking" : "listening"} tone={companionTone} />
             </div>
             <div className="w-full max-w-xl px-2 text-center">
+              <div className="mb-3">
+                <span className={`rounded-full border px-3 py-1 text-xs font-bold ${toneBadge.cls}`}>
+                  {toneBadge.label}
+                </span>
+              </div>
               <p className="text-xl font-bold text-white sm:text-2xl">
                 Mic on · listening
               </p>

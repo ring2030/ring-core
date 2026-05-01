@@ -287,6 +287,38 @@ export function ScreenRecordDemo() {
 
   const idle = !playing && elapsed === 0;
   const done = !playing && elapsed >= DEMO_TOTAL_MS;
+  const elapsedSec = Math.floor(elapsed / 1000);
+  const totalSec = Math.floor(DEMO_TOTAL_MS / 1000);
+  const timelinePct = Math.min(100, (elapsed / DEMO_TOTAL_MS) * 100);
+
+  const pitchAct = useMemo(() => {
+    if (elapsed < T.SUBMIT) {
+      return {
+        title: "Act 1: Accessibility first input",
+        proof: "No hands, no voice required for primary call action.",
+        impact: "Faster first touch for vulnerable patients.",
+      };
+    }
+    if (elapsed < T.VIDEO_END) {
+      return {
+        title: "Act 2: AI-assisted context capture",
+        proof: "Speech + intent are structured for nurse-side action.",
+        impact: "Less ambiguity, safer triage decisions.",
+      };
+    }
+    if (elapsed < T.NURSE_END) {
+      return {
+        title: "Act 3: Care-team response",
+        proof: "Nurse acknowledgment loop is explicit and immediate.",
+        impact: "Lower anxiety for patient and family.",
+      };
+    }
+    return {
+      title: "Act 4: Scale evidence",
+      proof: "Operational feedback is measurable and exportable.",
+      impact: "Deployment decisions can be data-driven.",
+    };
+  }, [elapsed]);
 
   const speechShown = speechTranscript.slice(0, speechRevealEnd);
   const listeningShown = listeningTarget.slice(0, listeningRevealEnd);
@@ -307,6 +339,24 @@ export function ScreenRecordDemo() {
 
   return (
     <div className="relative min-h-screen bg-slate-900 font-sans overflow-hidden select-none flex flex-col items-center justify-center text-slate-100">
+      {!idle && (
+        <div className="pointer-events-none fixed left-4 top-4 z-[100002] w-[min(92vw,30rem)] rounded-2xl border border-cyan-700/40 bg-slate-950/85 p-3 shadow-2xl">
+          <p className="text-[10px] font-black tracking-[0.16em] text-cyan-300">PITCH HUD</p>
+          <p className="mt-1 text-sm font-bold text-cyan-100">{pitchAct.title}</p>
+          <p className="mt-1 text-xs text-slate-300">Proof: {pitchAct.proof}</p>
+          <p className="mt-0.5 text-xs text-emerald-300">Impact: {pitchAct.impact}</p>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-violet-400 transition-[width] duration-150"
+              style={{ width: `${timelinePct}%` }}
+            />
+          </div>
+          <p className="mt-1 text-[11px] text-slate-400">
+            {elapsedSec}s / {totalSec}s
+          </p>
+        </div>
+      )}
+
       {(playing || (elapsed > 0 && !idle)) && (
         <div className="pointer-events-none fixed right-6 top-6 z-[100002] flex items-center gap-2 rounded-full bg-black/60 px-3 py-1.5 font-mono text-xs text-red-400 ring-1 ring-red-500/50">
           <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500" />
@@ -317,11 +367,14 @@ export function ScreenRecordDemo() {
       {idle && (
         <div className="z-10 flex max-w-lg flex-col items-center gap-8 px-6 text-center">
           <h1 className="text-3xl font-black tracking-tight text-slate-100 sm:text-4xl">
-            Screen recording walkthrough
+            Championship pitch demo
           </h1>
           <p className="text-base leading-relaxed text-slate-400">
-            After Start, a ~20s sequence runs: gaze on two tiles → dwell gauge → chat flow with
-            microphone (English speech recognition) → nurse notice. No audio playback from the page.
+            After Start, a ~20s sequence runs as a pitch story:
+            <br />
+            <span className="text-cyan-300">accessible input → AI context → nurse response → scale evidence</span>
+            <br />
+            You can record this as a judge-ready one-take flow.
             <br />
             <span className="text-slate-500">Use OBS or similar to capture the window.</span>
             <br />
@@ -507,13 +560,22 @@ export function ScreenRecordDemo() {
                     A nurse will be with you shortly
                   </h2>
                   <p className="text-2xl font-bold text-slate-400">Please wait a moment.</p>
+                  <div className="rounded-xl border border-emerald-700/40 bg-emerald-900/20 px-4 py-2 text-sm font-semibold text-emerald-200">
+                    Nurse dashboard receives structured reason + urgency signal.
+                  </div>
                 </div>
               )}
 
               {successMode === "wrap" && (
                 <div className="flex flex-col items-center gap-6 text-center">
-                  <p className="text-3xl font-bold text-slate-300">You can stop recording here</p>
-                  <p className="max-w-md text-slate-500">Run again from Start if you need another take.</p>
+                  <p className="text-3xl font-bold text-slate-300">Pitch close: deployment-ready narrative</p>
+                  <p className="max-w-2xl text-slate-400">
+                    This demo shows a full loop from patient intent capture to operational decision input.
+                    Use `/demo-1min` for judge checklist and feedback aggregate evidence.
+                  </p>
+                  <div className="rounded-xl border border-cyan-700/40 bg-cyan-900/15 px-4 py-2 text-sm text-cyan-100">
+                    Next ask: 1 hospital pilot, 14-day KPI baseline, weekly safety review.
+                  </div>
                   <button
                     type="button"
                     onClick={() => {
