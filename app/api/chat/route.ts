@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
 import { requireServerEnv } from "@/lib/validateEnv";
+import { getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
+import {
+  buildRateLimitHeaders,
+  checkRateLimit,
+  isRateLimitUnavailableError,
+  readRateLimitPolicy,
+} from "@/lib/server/rateLimit";
 
 // --- Triage API response ---
 export interface TriageResponse {
@@ -51,6 +58,42 @@ const FALLBACK: TriageResponse = {
   priority: 1,
 };
 let apiBackoffUntil = 0;
+const chatRateLimitPolicy = readRateLimitPolicy("RATE_LIMIT_CHAT", {
+  maxRequests: 12,
+  windowMs: 60_000,
+  quietHoursJstStart: 0,
+  quietHoursJstEnd: 6,
+  quietHoursMultiplier: 1.5,
+});
+const chatNurseRateLimitPolicy = readRateLimitPolicy("RATE_LIMIT_CHAT_NURSE", {
+  maxRequests: 20,
+  windowMs: 60_000,
+  quietHoursJstStart: 0,
+  quietHoursJstEnd: 6,
+  quietHoursMultiplier: 1.5,
+});
+
+function cookieValueFromRequest(request: Request, key: string): string | null {
+  const rawCookie = request.headers.get("cookie");
+  if (!rawCookie) return null;
+  const pair = rawCookie
+    .split(";")
+    .map((chunk) => chunk.trim())
+    .find((chunk) => chunk.startsWith(`${key}=`));
+  if (!pair) return null;
+  return decodeURIComponent(pair.slice(key.length + 1));
+}
+
+function isNurseSession(request: Request): boolean {
+  try {
+    const token = cookieValueFromRequest(request, getSessionCookieName());
+    if (!token) return false;
+    const session = verifySessionToken(token);
+    return session?.role === "nurse";
+  } catch {
+    return false;
+  }
+}
 
 function pickRandom(items: readonly string[], fallback: string): string {
   return items[Math.floor(Math.random() * items.length)] ?? fallback;
@@ -302,6 +345,27 @@ async function tryGeminiGenerate(params: {
 export async function POST(req: Request) {
   let message = "";
   try {
+    const nurseSession = isNurseSession(req);
+    const rateLimitResult = await checkRateLimit(
+      req,
+      "api:chat",
+      nurseSession ? chatNurseRateLimitPolicy : chatRateLimitPolicy,
+      nurseSession ? "nurse" : "default",
+    );
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        {
+          response: "Please wait a moment before speaking again.",
+          summary: "Rate limit exceeded for /api/chat",
+          priority: 1,
+        } satisfies TriageResponse,
+        {
+          status: 429,
+          headers: buildRateLimitHeaders(rateLimitResult),
+        },
+      );
+    }
+
     const body = await req.json();
     message = String(body?.message ?? "");
     const history: { role: string; text: string }[] = Array.isArray(body?.history) ? body.history : [];
@@ -310,11 +374,14 @@ export async function POST(req: Request) {
 
     if (!message) {
       console.log(`[API /chat] empty message → early return`);
-      return NextResponse.json({
-        response: "Please try speaking again when you’re ready.",
-        summary: "Silent or empty message",
-        priority: 1,
-      } satisfies TriageResponse);
+      return NextResponse.json(
+        {
+          response: "Please try speaking again when you’re ready.",
+          summary: "Silent or empty message",
+          priority: 1,
+        } satisfies TriageResponse,
+        { headers: buildRateLimitHeaders(rateLimitResult) },
+      );
     }
 
     const apiKey = requireServerEnv("GEMINI_API_KEY");
@@ -324,7 +391,9 @@ export async function POST(req: Request) {
       console.log(`[API /chat] API backoff (${remaining}s left) → localTriage`);
       const local = localTriage(message);
       console.log(`[API /chat] localTriage:`, local);
-      return NextResponse.json(local satisfies TriageResponse);
+      return NextResponse.json(local satisfies TriageResponse, {
+        headers: buildRateLimitHeaders(rateLimitResult),
+      });
     }
 
     const apiBase = process.env["GEMINI_API_BASE"]?.replace(/\/$/, "");
@@ -388,7 +457,9 @@ export async function POST(req: Request) {
       );
       const local = localTriage(message);
       console.log(`[API /chat] localTriage (API error):`, local);
-      return NextResponse.json(local satisfies TriageResponse);
+      return NextResponse.json(local satisfies TriageResponse, {
+        headers: buildRateLimitHeaders(rateLimitResult),
+      });
     }
 
     const data = result.data as
@@ -417,8 +488,20 @@ export async function POST(req: Request) {
 
     console.log(`[API /chat] final (Gemini):`, triage);
     console.log(`====== [API /chat] done ======\n`);
-    return NextResponse.json(triage satisfies TriageResponse);
+    return NextResponse.json(triage satisfies TriageResponse, {
+      headers: buildRateLimitHeaders(rateLimitResult),
+    });
   } catch (error: unknown) {
+    if (isRateLimitUnavailableError(error)) {
+      return NextResponse.json(
+        {
+          response: "Service temporarily unavailable.",
+          summary: "Rate-limit backend unavailable",
+          priority: 1,
+        } satisfies TriageResponse,
+        { status: 503 },
+      );
+    }
     console.error(`[API /chat] exception:`, toErrorMessage(error));
     const local = localTriage(message);
     console.log(`[API /chat] localTriage (exception):`, local);

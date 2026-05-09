@@ -1,5 +1,13 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { cookies } from "next/headers";
+import { getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
+import {
+  buildRateLimitHeaders,
+  checkRateLimit,
+  isRateLimitUnavailableError,
+  readRateLimitPolicy,
+} from "@/lib/server/rateLimit";
 
 export interface CallSummaryItem {
   reasons: string[];
@@ -12,6 +20,21 @@ export interface FamilySummaryRequest {
   date: string; // "YYYY/MM/DD?E????E?E
   calls: CallSummaryItem[];
 }
+
+const familySummaryRateLimitPolicy = readRateLimitPolicy("RATE_LIMIT_FAMILY_SUMMARY", {
+  maxRequests: 6,
+  windowMs: 60_000,
+  quietHoursJstStart: 0,
+  quietHoursJstEnd: 6,
+  quietHoursMultiplier: 1.5,
+});
+const familySummaryNurseRateLimitPolicy = readRateLimitPolicy("RATE_LIMIT_FAMILY_SUMMARY_NURSE", {
+  maxRequests: 10,
+  windowMs: 60_000,
+  quietHoursJstStart: 0,
+  quietHoursJstEnd: 6,
+  quietHoursMultiplier: 1.5,
+});
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
@@ -63,13 +86,42 @@ export function buildPrompt(req: FamilySummaryRequest): string {
 
 export async function POST(req: Request) {
   try {
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get(getSessionCookieName())?.value;
+    let nurseSession = false;
+    if (sessionToken) {
+      try {
+        nurseSession = verifySessionToken(sessionToken)?.role === "nurse";
+      } catch {
+        nurseSession = false;
+      }
+    }
+    const rateLimitResult = await checkRateLimit(
+      req,
+      "api:family-summary",
+      nurseSession ? familySummaryNurseRateLimitPolicy : familySummaryRateLimitPolicy,
+      nurseSession ? "nurse" : "default",
+    );
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { error: "Too many requests. Please retry shortly." },
+        {
+          status: 429,
+          headers: buildRateLimitHeaders(rateLimitResult),
+        },
+      );
+    }
+
     const body: FamilySummaryRequest = await req.json();
 
     const apiKey = process.env["GEMINI_API_KEY"];
     if (!apiKey) {
       return NextResponse.json(
         { error: "GEMINI_API_KEY is not set" },
-        { status: 500 },
+        {
+          status: 500,
+          headers: buildRateLimitHeaders(rateLimitResult),
+        },
       );
     }
 
@@ -90,8 +142,19 @@ export async function POST(req: Request) {
       response.text?.trim() ??
       "Grandma had a peaceful day. Give her a call when you can!";
 
-    return NextResponse.json({ text });
+    return NextResponse.json(
+      { text },
+      {
+        headers: buildRateLimitHeaders(rateLimitResult),
+      },
+    );
   } catch (err: unknown) {
+    if (isRateLimitUnavailableError(err)) {
+      return NextResponse.json(
+        { error: "Rate-limit backend unavailable." },
+        { status: 503 },
+      );
+    }
     const message = toErrorMessage(err);
     console.error("family-summary route error:", message);
     return NextResponse.json(

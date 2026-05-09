@@ -29,6 +29,7 @@
     "@tensorflow/tfjs-backend-webgl": "^4.22.0",
     "@tensorflow/tfjs-converter": "^4.22.0",
     "@tensorflow/tfjs-core": "^4.22.0",
+    "@upstash/redis": "^1.38.0",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.9.0",
     "lucide-react": "^0.577.0",
