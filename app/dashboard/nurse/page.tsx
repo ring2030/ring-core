@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { onAuthStateChanged, signInAnonymously, type Auth } from "firebase/auth";
+import { collection, onSnapshot, orderBy, query, type Firestore } from "firebase/firestore";
 import {
   BarChart, Bar, CartesianGrid, Cell, Legend, PieChart, Pie,
   ResponsiveContainer, Tooltip, XAxis, YAxis,
@@ -10,7 +10,7 @@ import {
 import {
   Activity, AlertTriangle, BedDouble, Bell,
   CheckCircle2, Clock, Heart, Sparkles,
-  TrendingDown, UserCheck, Volume2, Wifi, WifiOff, X,
+  TrendingDown, TrendingUp, UserCheck, Volume2, Wifi, WifiOff, X,
 } from "lucide-react";
 
 import PatientCard, { type PatientCardData } from "@/components/nurse/PatientCard";
@@ -82,19 +82,21 @@ export default function NurseDashboard() {
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const useLiveAnalytics = process.env["NEXT_PUBLIC_NURSE_ANALYTICS_LIVE"] === "1";
-  const initResult = useMemo(() => {
+  // Firebase client SDK is browser-only; initializing it inside useMemo runs
+  // during SSR and throws, which produces a different DOM on server vs
+  // client (React hydration error #418). Defer init to useEffect so the
+  // initial render is identical on both sides.
+  type InitResult = { auth: Auth | null; db: Firestore | null; initError: string | null };
+  const [initResult, setInitResult] = useState<InitResult>({ auth: null, db: null, initError: null });
+  useEffect(() => {
     try {
-      return {
-        auth: getFirebaseAuth(),
-        db: getFirestoreDb(),
-        initError: null as string | null,
-      };
+      setInitResult({ auth: getFirebaseAuth(), db: getFirestoreDb(), initError: null });
     } catch (e: unknown) {
-      return {
+      setInitResult({
         auth: null,
         db: null,
         initError: e instanceof Error ? e.message : "Firebase failed to initialize.",
-      };
+      });
     }
   }, []);
 
@@ -146,16 +148,26 @@ export default function NurseDashboard() {
     if (!initResult.db) return;
 
     const callsCollection = getCallsCollectionNameForCurrentHospital();
-    const q = query(collection(initResult.db, callsCollection), orderBy("????", "desc"));
+    // Legacy Firestore docs use the Japanese field name (sou-shin-bi-ji =
+    // "send timestamp"). Written via Unicode escape so the source stays
+    // ASCII-safe regardless of editor/OS encoding (this file's encoding
+    // history has corrupted bare non-ASCII characters before).
+    const SENT_AT_FIELD = "\u9001\u4fe1\u65e5\u6642";
+    const q = query(
+      collection(initResult.db, callsCollection),
+      orderBy(SENT_AT_FIELD, "desc"),
+    );
     return onSnapshot(q, (snap) => {
       setIsOnline(true);
 
       if (!isInitialLoad.current) {
         snap.docChanges().filter((c) => c.type === "added").forEach((c) => {
-          const data     = c.doc.data();
-          const priority = data["???"] ?? 1;
-          const reason = reasonStr(data["??"]);
-          const sender = data["???"] ?? "Patient";
+          // Use the shared schema normalizer so we read the same fields
+          // (English + legacy Japanese) that the rest of the app writes.
+          const normalized = normalizeCallDoc(c.doc.id, c.doc.data());
+          const priority = normalized.priority;
+          const reason = reasonStr(normalized.reasons);
+          const sender = normalized.senderName;
 
           playChime(priority >= 4);
 
@@ -271,7 +283,7 @@ export default function NurseDashboard() {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-stone-50">
         <div className="h-12 w-12 animate-spin rounded-full border-4 border-rose-200 border-t-rose-500" />
-        <p className="font-bold text-stone-400">Starting nurse station???</p>
+        <p className="font-bold text-stone-400">Starting nurse station&hellip;</p>
       </div>
     );
   }
@@ -318,7 +330,7 @@ export default function NurseDashboard() {
           <div className="flex items-center justify-between bg-red-600 px-6 py-3 text-white shadow-lg fade-in-down">
             <div className="flex animate-pulse items-center gap-3">
               <AlertTriangle className="h-5 w-5 shrink-0" />
-              <p className="font-black tracking-wide">Emergency call ???Erespond now</p>
+              <p className="font-black tracking-wide">Emergency call - respond now</p>
             </div>
             <button onClick={() => setAlertDismissed(true)} className="rounded-full p-1 hover:bg-red-500 transition-colors">
               <X className="h-5 w-5" />
@@ -418,7 +430,7 @@ export default function NurseDashboard() {
                 className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm"
               />
               <AppButton type="button" onClick={() => void issueInvite()} disabled={inviteLoading}>
-                {inviteLoading ? "Creating???" : "Create link"}
+                {inviteLoading ? "Creating\u2026" : "Create link"}
               </AppButton>
             </div>
             {inviteLink && (
@@ -474,7 +486,7 @@ export default function NurseDashboard() {
                 <Sparkles className="h-4 w-4 text-violet-400" /> AI impact (demo data)
               </h2>
               <StatusBadge tone="accent" className="px-3 py-1">
-                {useLiveAnalytics ? "Live aggregate" : "Apr???Sep totals"}
+                {useLiveAnalytics ? "Live aggregate" : "Apr-Sep totals"}
               </StatusBadge>
             </div>
             <p className="mb-3 text-[11px] text-stone-400">
@@ -531,7 +543,7 @@ export default function NurseDashboard() {
                     <TrendingDown className="h-4 w-4 text-emerald-500" />
                     Impact from AI triage
                   </h3>
-                  <p className="text-[11px] text-stone-400">Priority 1???E: AI listening; 3???E: in-person</p>
+                  <p className="text-[11px] text-stone-400">Priority 1-2: AI listening; 3+: in-person</p>
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
@@ -566,7 +578,7 @@ export default function NurseDashboard() {
 
                 <div className="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3">
                   <p className="text-[11px] font-bold leading-relaxed text-emerald-700">
-                    ???? Avg. <strong>{analytics.kpi.reducedVisits}</strong> fewer in-person visits per month ???Emore time for hands-on care.
+                    Avg. <strong>{analytics.kpi.reducedVisits}</strong> fewer in-person visits per month - more time for hands-on care.
                   </p>
                 </div>
                 <div className="rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3">
@@ -584,11 +596,16 @@ export default function NurseDashboard() {
                     Empathy coverage {analytics.kpi.empathyCoverage}% (AI-supported calming interactions)
                   </p>
                   <p
-                    className={`mt-1 text-[10px] font-bold ${
+                    className={`mt-1 flex items-center gap-1 text-[10px] font-bold ${
                       analytics.scoreDeltaVsYesterday >= 0 ? "text-emerald-700" : "text-rose-700"
                     }`}
                   >
-                    {analytics.scoreDeltaVsYesterday >= 0 ? "???" : "???"} vs yesterday:{" "}
+                    {analytics.scoreDeltaVsYesterday >= 0 ? (
+                      <TrendingUp className="h-3 w-3" aria-hidden />
+                    ) : (
+                      <TrendingDown className="h-3 w-3" aria-hidden />
+                    )}
+                    vs yesterday:{" "}
                     {analytics.scoreDeltaVsYesterday >= 0 ? "+" : ""}
                     {analytics.scoreDeltaVsYesterday}
                   </p>

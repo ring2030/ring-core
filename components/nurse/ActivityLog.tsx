@@ -1,11 +1,11 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
-import { StatusBadge } from "@/components/ui/ThemePrimitives";
-import { getPriorityBadge } from "@/lib/dashboard/priorityBadge";
-import { emojiForReason } from "@/lib/calls/reasons";
+import { StatusBadge, type BadgeTone } from "@/components/ui/ThemePrimitives";
+import { emojiForReason, normalizeReasonLabel } from "@/lib/calls/reasons";
 
-// ─── 型 ──────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface CallRow {
   id: string;
@@ -16,11 +16,78 @@ export interface CallRow {
   date: Date;
 }
 
-// ─── 定数 ────────────────────────────────────────────────────────────────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
-// ─── コンポーネント ───────────────────────────────────────────────────────────
+const MAX_ROWS = 25;
+
+/**
+ * ActivityLog uses its own priority tone mapping (independent of the Patient
+ * Card / Toast badges) so that the table reads as a quick triage glance:
+ *   1-2: neutral grey, 3: amber, 4-5: red.
+ */
+function activityTone(priority: number): BadgeTone {
+  if (priority >= 4) return "danger";
+  if (priority === 3) return "warning";
+  return "neutral";
+}
+
+function priorityLabel(priority: number): string {
+  if (priority <= 0) return "P1";
+  if (priority >= 5) return "P5";
+  return `P${Math.round(priority)}`;
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function formatHHMM(d: Date): string {
+  return d.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatRelative(date: Date, now: Date): string {
+  const diffMs = now.getTime() - date.getTime();
+  if (Number.isNaN(diffMs)) return "";
+
+  const diffMin = Math.floor(diffMs / 60_000);
+  if (diffMin < 1) return "just now";
+  if (diffMin < 60) return `${diffMin}m ago`;
+
+  const diffH = Math.floor(diffMin / 60);
+  if (diffH < 24 && isSameDay(date, now)) return `${diffH}h ago`;
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (isSameDay(date, yesterday)) return `Yesterday ${formatHHMM(date)}`;
+
+  return `${date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "2-digit",
+  })} ${formatHHMM(date)}`;
+}
+
+// ─── Component ──────────────────────────────────────────────────────────────
 
 export default function ActivityLog({ calls }: { calls: CallRow[] }) {
+  // Compute "now" only on the client (and refresh every minute) so the
+  // relative timestamps stay current without breaking SSR equality.
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const rows = calls.slice(0, MAX_ROWS);
+
   return (
     <div className="rounded-3xl border border-stone-100 bg-white p-6 shadow-sm">
       <div className="mb-6 flex items-center justify-between">
@@ -48,8 +115,9 @@ export default function ActivityLog({ calls }: { calls: CallRow[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-stone-50">
-            {calls.slice(0, 20).map((c) => {
-              const badge = getPriorityBadge(c.priority);
+            {rows.map((c) => {
+              const reasonLabel = normalizeReasonLabel(c.reason);
+              const time = now ? formatRelative(c.date, now) : formatHHMM(c.date);
               return (
                 <tr
                   key={c.id}
@@ -57,23 +125,29 @@ export default function ActivityLog({ calls }: { calls: CallRow[] }) {
                     c.priority >= 4 ? "bg-red-50 hover:bg-red-100" : "hover:bg-stone-50"
                   }`}
                 >
-                  <td className="px-4 py-3 font-mono font-bold text-stone-400">
-                    {c.date.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+                  <td className="whitespace-nowrap px-4 py-3 font-mono font-bold text-stone-400">
+                    {time}
                   </td>
                   <td className="px-4 py-3 font-bold text-stone-700">{c.sender}</td>
                   <td className="px-4 py-3 font-bold text-stone-700">
-                    {emojiForReason(c.reason)} {c.reason}
+                    {emojiForReason(reasonLabel)} {reasonLabel}
                   </td>
                   <td className="px-4 py-3">
-                    <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+                    <StatusBadge tone={activityTone(c.priority)}>
+                      {priorityLabel(c.priority)}
+                    </StatusBadge>
                   </td>
-                  <td className="max-w-xs truncate px-4 py-3 text-stone-400">
-                    {c.summary || "—"}
+                  <td className="max-w-xs px-4 py-3 text-stone-400">
+                    {c.summary ? (
+                      <span className="line-clamp-2 leading-snug">{c.summary}</span>
+                    ) : (
+                      <span>&mdash;</span>
+                    )}
                   </td>
                 </tr>
               );
             })}
-            {calls.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td colSpan={5} className="py-16 text-center font-bold text-stone-300">
                   No entries
