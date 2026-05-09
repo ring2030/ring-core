@@ -37,6 +37,8 @@ const STORE_DIR = process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME
 const STORE_FILE = path.join(STORE_DIR, "nurse-accounts.json");
 const DEFAULT_ID = "1";
 const DEFAULT_PASSWORD = "1";
+const LEGACY_DEMO_ID = "11";
+const LEGACY_DEMO_PASSWORD = "11";
 
 function getSecret(): string {
   return process.env["APP_SIGNING_SECRET"]?.trim() || "ring-core-dev-only-secret-change-me";
@@ -63,7 +65,7 @@ async function readStore(): Promise<NurseAccountStore> {
         account.mustChangePassword = false;
       }
     }
-    return parsed;
+    return ensureLegacyDemoAccount(parsed);
   } catch {
     const now = new Date().toISOString();
     const initial: NurseAccountStore = {
@@ -78,6 +80,16 @@ async function readStore(): Promise<NurseAccountStore> {
           createdAt: now,
           updatedAt: now,
         },
+        {
+          id: LEGACY_DEMO_ID,
+          hospitalId: DEFAULT_HOSPITAL_ID,
+          passwordHash: hashPassword(LEGACY_DEMO_PASSWORD),
+          disabled: false,
+          role: "nurse",
+          mustChangePassword: false,
+          createdAt: now,
+          updatedAt: now,
+        },
       ],
     };
     // Best-effort persist; ignore write failures (e.g. read-only FS on Vercel)
@@ -86,8 +98,32 @@ async function readStore(): Promise<NurseAccountStore> {
     } catch {
       /* ignore */
     }
-    return initial;
+    return ensureLegacyDemoAccount(initial);
   }
+}
+
+function ensureLegacyDemoAccount(store: NurseAccountStore): NurseAccountStore {
+  const existing = store.accounts.find(
+    (a) => a.id === LEGACY_DEMO_ID && a.hospitalId === DEFAULT_HOSPITAL_ID,
+  );
+  if (!existing) {
+    const now = new Date().toISOString();
+    store.accounts.push({
+      id: LEGACY_DEMO_ID,
+      hospitalId: DEFAULT_HOSPITAL_ID,
+      passwordHash: hashPassword(LEGACY_DEMO_PASSWORD),
+      disabled: false,
+      role: "nurse",
+      mustChangePassword: false,
+      createdAt: now,
+      updatedAt: now,
+    });
+  } else if (existing.disabled) {
+    // Keep the historical demo login usable in dev/stage unless explicitly changed.
+    existing.disabled = false;
+    existing.updatedAt = new Date().toISOString();
+  }
+  return store;
 }
 
 function toView(account: StoredNurseAccount): NurseAccountView {

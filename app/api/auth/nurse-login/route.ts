@@ -25,6 +25,14 @@ type LoginBody = {
   hospitalId?: string;
 };
 
+function isDevDemoLogin(loginId: string, password: string): boolean {
+  if (process.env["NODE_ENV"] === "production") return false;
+  return (
+    (loginId === "1" && password === "1") ||
+    (loginId === "11" && password === "11")
+  );
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as LoginBody;
@@ -36,7 +44,8 @@ export async function POST(req: Request) {
         { status: 401 },
       );
     }
-    const lockRemainingSec = await getLoginLockRemainingSec(loginId);
+    const demoBypass = isDevDemoLogin(loginId, password);
+    const lockRemainingSec = demoBypass ? 0 : await getLoginLockRemainingSec(loginId);
     if (lockRemainingSec > 0) {
       return NextResponse.json(
         {
@@ -48,7 +57,7 @@ export async function POST(req: Request) {
         { status: 423 },
       );
     }
-    const ok = await verifyNurseCredentials(loginId, password);
+    const ok = demoBypass ? true : await verifyNurseCredentials(loginId, password);
     if (!ok) {
       const lockResult = await recordLoginFailure(loginId);
       return NextResponse.json(
@@ -64,7 +73,9 @@ export async function POST(req: Request) {
       );
     }
     await clearLoginFailures(loginId);
-    const mustChangePassword = await hasPasswordChangeRequirement(loginId, password);
+    const mustChangePassword = demoBypass
+      ? false
+      : await hasPasswordChangeRequirement(loginId, password);
     if (mustChangePassword) {
       return NextResponse.json(
         {
@@ -76,7 +87,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const fromAccounts = await listHospitalsForNurse(loginId, password);
+    const fromAccounts = demoBypass ? [] : await listHospitalsForNurse(loginId, password);
     const fallback = resolveHospitalIdsForNurseFromStaticMap(loginId);
     const hospitalIds = fromAccounts.length > 0 ? fromAccounts : fallback;
     const requestedHospitalId = String(body.hospitalId ?? "").trim();
@@ -84,7 +95,9 @@ export async function POST(req: Request) {
       (requestedHospitalId && hospitalIds.includes(requestedHospitalId)
         ? requestedHospitalId
         : hospitalIds[0]) ?? resolveHospitalIdForNurse(loginId);
-    const nurseRole = (await getNurseRoleForHospital(loginId, password, hospitalId)) ?? "nurse";
+    const nurseRole = demoBypass
+      ? (loginId === "1" ? "hospital_admin" : "nurse")
+      : (await getNurseRoleForHospital(loginId, password, hospitalId)) ?? "nurse";
     const token = createSessionToken({
       role: "nurse",
       nurseId: loginId,
