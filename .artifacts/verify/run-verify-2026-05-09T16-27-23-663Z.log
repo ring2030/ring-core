@@ -1,0 +1,40 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\privacy\page.tsx
+  13:22  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  15:24  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  15:43  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  15:52  error  `"` can be escaped with `&quot;`, `&ldquo;`, `&#34;`, `&rdquo;`  react/no-unescaped-entities
+  34:24  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+  89:74  error  `'` can be escaped with `&apos;`, `&lsquo;`, `&#39;`, `&rsquo;`  react/no-unescaped-entities
+
+C:\Users\user\Desktop\ring-core\components\nurse\ActivityLog.tsx
+  89:5  error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+C:\Users\user\Desktop\ring-core\components\nurse\ActivityLog.tsx:89:5
+  87 |   const [now, setNow] = useState<Date | null>(null);
+  88 |   useEffect(() => {
+> 89 |     setNow(new Date());
+     |     ^^^^^^ Avoid calling setState() directly within an effect
+  90 |     const id = setInterval(() => setNow(new Date()), 60_000);
+  91 |     return () => clearInterval(id);
+  92 |   }, []);  react-hooks/set-state-in-effect
+
+✖ 7 problems (7 errors, 0 warnings)
+
+
+--- [lint] exit_code=1
+
+❌ run:verify failed in 4521ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T16-27-23-663Z.log

@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Heart,
   MessageCircle,
+  Quote,
   Sparkles,
   Stethoscope,
   Bot,
@@ -38,6 +39,8 @@ interface CallDoc {
   id: string;
   reason: string;
   summary: string;
+  /** Patient's spoken line (STT) when present. */
+  transcript: string;
   priority: number;
   ts: Date;
 }
@@ -122,6 +125,16 @@ function TimelineCard({ call, index }: { call: CallDoc; index: number }) {
             {emoji} {call.reason}
           </p>
 
+          {/* 発話（grandma の声） */}
+          {call.transcript && (
+            <div className="mb-1.5 flex items-start gap-1.5 rounded-xl bg-white/70 px-3 py-2 backdrop-blur-sm">
+              <Quote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
+              <p className="text-xs italic leading-relaxed text-rose-800">
+                &ldquo;{call.transcript}&rdquo;
+              </p>
+            </div>
+          )}
+
           {/* AI要約 */}
           {call.summary && (
             <div className="flex items-start gap-1.5 rounded-xl bg-white/60 px-3 py-2 backdrop-blur-sm">
@@ -168,7 +181,15 @@ export default function FamilyHistoryPage() {
     const unsub = onSnapshot(q, (snap) => {
       const start = startOf(selectedDate).getTime();
       const end = endOf(selectedDate).getTime();
-      const normalized = snap.docs.map((d) => normalizeCallDoc(d.id, d.data()));
+      const transcriptById = new Map<string, string>();
+      const normalized = snap.docs.map((d) => {
+        const raw = d.data() as Record<string, unknown>;
+        const transcript = String(
+          raw["transcript"] ?? raw["認識文"] ?? "",
+        ).trim();
+        if (transcript) transcriptById.set(d.id, transcript);
+        return normalizeCallDoc(d.id, d.data());
+      });
       const docs: CallDoc[] = normalized
         .filter((item) => {
           const t = item.createdAt.getTime();
@@ -179,6 +200,7 @@ export default function FamilyHistoryPage() {
           id: item.id,
           reason: item.reasons.join(" · "),
           summary: item.aiSummary,
+          transcript: transcriptById.get(item.id) ?? "",
           priority: item.priority,
           ts: item.createdAt,
         }));

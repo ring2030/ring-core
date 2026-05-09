@@ -10,9 +10,9 @@ export default function PrivacyPage() {
       body: (
         <>
           In the default mode, all face-detection and gaze tracking runs inside
-          the patient's browser using MediaPipe.{" "}
+          the patient&apos;s browser using MediaPipe.{" "}
           <strong>Video frames are never transmitted to any server.</strong>{" "}
-          Only the user's selection (e.g. "Restroom") is sent to the call queue.
+          Only the user&apos;s selection (e.g. &ldquo;Restroom&rdquo;) is sent to the call queue.
         </>
       ),
     },
@@ -31,7 +31,7 @@ export default function PrivacyPage() {
       title: "3. Access control & auditability",
       body: (
         <>
-          Each hospital's data is isolated. Staff access is gated by role-based
+          Each hospital&apos;s data is isolated. Staff access is gated by role-based
           access control, session cookies, and mandatory password rotation on
           first login. All sensitive operations are written to a tamper-evident
           audit log accessible only via authenticated admin routes.
@@ -86,7 +86,7 @@ export default function PrivacyPage() {
       ))}
       <hr className="my-10 border-gray-200" />
       <p className="text-sm text-gray-500">
-        Questions about how ring handles your data? Contact your hospital's
+        Questions about how ring handles your data? Contact your hospital&apos;s
         ring administrator, or open an issue in our public repository.
       </p>
     </main>

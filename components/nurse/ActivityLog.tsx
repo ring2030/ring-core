@@ -1,9 +1,29 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { Bell } from "lucide-react";
 import { StatusBadge, type BadgeTone } from "@/components/ui/ThemePrimitives";
 import { emojiForReason, normalizeReasonLabel } from "@/lib/calls/reasons";
+
+/**
+ * Subscribe-style "current time" hook.
+ *
+ * - On the server we return null (no live clock during SSR), which keeps
+ *   the first paint deterministic and avoids hydration mismatches.
+ * - On the client the snapshot is `Date.now()` so the very first client
+ *   render already has a usable clock — without setState-in-effect.
+ */
+function useNow(intervalMs: number): Date | null {
+  const ms = useSyncExternalStore<number | null>(
+    (notify) => {
+      const id = setInterval(notify, intervalMs);
+      return () => clearInterval(id);
+    },
+    () => Date.now(),
+    () => null,
+  );
+  return typeof ms === "number" ? new Date(ms) : null;
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -11,6 +31,10 @@ export interface CallRow {
   id: string;
   reason: string;
   summary: string;
+  /** Voice / STT line when AI summary is missing */
+  transcript?: string;
+  /** Staff note (e.g. gaze / triage context) */
+  staffNote?: string;
   priority: number;
   sender: string;
   date: Date;
@@ -68,10 +92,11 @@ function formatRelative(date: Date, now: Date): string {
   yesterday.setDate(now.getDate() - 1);
   if (isSameDay(date, yesterday)) return `Yesterday ${formatHHMM(date)}`;
 
-  return `${date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-  })} ${formatHHMM(date)}`;
+  const dateOpts: Intl.DateTimeFormatOptions = { month: "short", day: "2-digit" };
+  if (date.getFullYear() !== now.getFullYear()) {
+    dateOpts.year = "numeric";
+  }
+  return `${date.toLocaleDateString("en-US", dateOpts)} ${formatHHMM(date)}`;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -79,12 +104,9 @@ function formatRelative(date: Date, now: Date): string {
 export default function ActivityLog({ calls }: { calls: CallRow[] }) {
   // Compute "now" only on the client (and refresh every minute) so the
   // relative timestamps stay current without breaking SSR equality.
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 60_000);
-    return () => clearInterval(id);
-  }, []);
+  // We use useSyncExternalStore so the initial value comes from a snapshot
+  // rather than a setState-in-effect (which the linter rightfully flags).
+  const now = useNow(60_000);
 
   const rows = calls.slice(0, MAX_ROWS);
 
@@ -104,7 +126,7 @@ export default function ActivityLog({ calls }: { calls: CallRow[] }) {
         <table className="w-full min-w-[520px] text-xs">
           <thead className="bg-stone-50">
             <tr>
-              {["Time", "From", "Reason", "Priority", "AI note"].map((h) => (
+              {["Time", "From", "Reason", "Priority", "Note / voice"].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-3 text-left text-[10px] font-black uppercase tracking-wider text-stone-400"
@@ -137,12 +159,28 @@ export default function ActivityLog({ calls }: { calls: CallRow[] }) {
                       {priorityLabel(c.priority)}
                     </StatusBadge>
                   </td>
-                  <td className="max-w-xs px-4 py-3 text-stone-400">
+                  <td className="max-w-xs px-4 py-3 text-stone-500">
                     {c.summary ? (
                       <span className="line-clamp-2 leading-snug">{c.summary}</span>
-                    ) : (
-                      <span>&mdash;</span>
-                    )}
+                    ) : null}
+                    {!c.summary && c.transcript ? (
+                      <span className="line-clamp-2 text-stone-600 leading-snug">
+                        <span className="font-semibold text-stone-500">Voice: </span>
+                        {c.transcript}
+                      </span>
+                    ) : null}
+                    {!c.summary && !c.transcript && c.staffNote ? (
+                      <span className="line-clamp-2 leading-snug text-stone-600">{c.staffNote}</span>
+                    ) : null}
+                    {!c.summary && !c.transcript && !c.staffNote ? (
+                      <span className="text-stone-400">&mdash;</span>
+                    ) : null}
+                    {c.summary && c.transcript && c.transcript.trim() !== c.summary.trim() ? (
+                      <p className="mt-1 line-clamp-2 text-[11px] text-stone-500">
+                        <span className="font-medium">Voice: </span>
+                        {c.transcript}
+                      </p>
+                    ) : null}
                   </td>
                 </tr>
               );

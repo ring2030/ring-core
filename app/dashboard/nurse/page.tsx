@@ -184,10 +184,16 @@ export default function NurseDashboard() {
       setCalls(
         snap.docs.map((d) => {
           const normalized = normalizeCallDoc(d.id, d.data());
+          const raw = d.data() as Record<string, unknown>;
+          const transcript = String(raw["transcript"] ?? raw["認識文"] ?? "").trim();
+          const staffNote = normalized.note.trim();
+          const summary = normalized.aiSummary.trim();
           return {
             id: normalized.id,
             reason: reasonStr(normalized.reasons),
-            summary: normalized.aiSummary,
+            summary,
+            ...(transcript ? { transcript } : {}),
+            ...(staffNote ? { staffNote } : {}),
             priority: normalized.priority,
             sender: normalized.senderName,
             date: normalized.createdAt,
@@ -446,13 +452,13 @@ export default function NurseDashboard() {
             )}
           </AppCard>
 
-          {/* ?????? ?????????????????????E?????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????? */}
+          {/* Top stat strip */}
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[
               { label: "Calls today", value: calls.filter((c) => isToday(c.date)).length, icon: <Bell className="h-5 w-5 text-rose-400" />, bg: "bg-rose-50 border-rose-100" },
               { label: "Residents", value: PATIENTS.length, icon: <BedDouble className="h-5 w-5 text-sky-400" />, bg: "bg-sky-50 border-sky-100" },
               { label: "Urgent now", value: patientData.filter((p) => p.maxPriority >= 4).length, icon: <AlertTriangle className="h-5 w-5 text-red-400" />, bg: patientData.some((p) => p.maxPriority >= 4) ? "bg-red-50 border-red-200" : "bg-stone-50 border-stone-100" },
-              { label: "Resolved", value: calls.filter((c) => isToday(c.date) && c.priority <= 2).length, icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />, bg: "bg-emerald-50 border-emerald-100" },
+              { label: "AI handled", value: calls.filter((c) => isToday(c.date) && c.priority <= 2).length, icon: <CheckCircle2 className="h-5 w-5 text-emerald-400" />, bg: "bg-emerald-50 border-emerald-100" },
             ].map((s, i) => (
               <div key={s.label} className={`flex items-center gap-4 rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 fade-in-up ${s.bg}`}
                 style={{ animationDelay: `${i * 60}ms` }}>

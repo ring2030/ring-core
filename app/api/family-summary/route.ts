@@ -44,6 +44,57 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
+function isLikelyGeminiQuotaError(err: unknown, message: string): boolean {
+  const m = message.toLowerCase();
+  if (m.includes("resource_exhausted") || m.includes("quota") || m.includes("429")) return true;
+  if (err && typeof err === "object" && "status" in err) {
+    const s = (err as { status?: number }).status;
+    if (s === 429) return true;
+  }
+  return false;
+}
+
+/** Warm family message without calling Gemini (quota / outage fallback). */
+export function buildOfflineFamilyMessage(req: FamilySummaryRequest): string {
+  const { date, calls } = req;
+  if (calls.length === 0) {
+    return (
+      `Hi — we do not see any calls logged for ${date} yet. ` +
+      `That can mean a peaceful stretch, or the tablet was quieter than usual. ` +
+      `If you can, a short call or voice message usually brightens Kiyoko's day.`
+    );
+  }
+  let restroom = 0;
+  let chat = 0;
+  for (const c of calls) {
+    for (const r of c.reasons) {
+      const t = r.toLowerCase();
+      if (
+        t.includes("restroom") ||
+        t.includes("toilet") ||
+        t.includes("toileting") ||
+        r.includes("トイレ")
+      ) {
+        restroom += 1;
+      }
+      if (t.includes("chat") || r.includes("お話")) {
+        chat += 1;
+      }
+    }
+  }
+  const lines = calls
+    .slice(0, 8)
+    .map((c) => `• ${c.time} — ${c.reasons.join(" / ")}${c.notes ? ` (${c.notes})` : ""}`)
+    .join("\n");
+  const tail = calls.length > 8 ? `\n… and ${calls.length - 8} more.` : "";
+  return (
+    `Here's a quick snapshot for ${date} (offline summary — live AI is briefly unavailable).\n\n` +
+    `Total: ${calls.length} call(s). Restroom-ish: ${restroom}, Chat-ish: ${chat}.\n\n` +
+    `Timeline:\n${lines}${tail}\n\n` +
+    `If anything looks unusual to you, a gentle check-in with the care team or a family call can help. 🌷`
+  );
+}
+
 // Gemini ????E??????E?????E
 export function buildPrompt(req: FamilySummaryRequest): string {
   const { date, calls } = req;
@@ -87,6 +138,7 @@ export function buildPrompt(req: FamilySummaryRequest): string {
 }
 
 export async function POST(req: Request) {
+  let body: FamilySummaryRequest = { date: "", calls: [] };
   try {
     const cookieStore = await cookies();
     const sessionToken = cookieStore.get(getSessionCookieName())?.value;
@@ -114,16 +166,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const body: FamilySummaryRequest = await req.json();
+    try {
+      body = (await req.json()) as FamilySummaryRequest;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     const apiKey = process.env["GEMINI_API_KEY"];
     if (!apiKey) {
+      const text = buildOfflineFamilyMessage(body);
       return NextResponse.json(
-        { error: "GEMINI_API_KEY is not set" },
-        {
-          status: 500,
-          headers: buildRateLimitHeaders(rateLimitResult),
-        },
+        { text, fallback: true, reason: "GEMINI_API_KEY missing — offline summary." },
+        { headers: buildRateLimitHeaders(rateLimitResult) },
       );
     }
 
@@ -158,8 +212,21 @@ export async function POST(req: Request) {
         { status: 503 },
       );
     }
-    Sentry.captureException(err);
     const message = toErrorMessage(err);
+    if (isLikelyGeminiQuotaError(err, message)) {
+      try {
+        const text = buildOfflineFamilyMessage(body);
+        console.warn("family-summary: Gemini unavailable, using offline summary.");
+        return NextResponse.json({
+          text,
+          fallback: true,
+          warning: "Live AI summary temporarily unavailable (quota). Showing a short offline recap.",
+        });
+      } catch {
+        /* fall through */
+      }
+    }
+    Sentry.captureException(err);
     console.error("family-summary route error:", message);
     return NextResponse.json(
       { error: message || "Unknown error" },
