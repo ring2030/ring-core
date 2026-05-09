@@ -1,0 +1,66 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:37:44
+   Duration  1.68s (transform 281ms, setup 0ms, import 625ms, tests 48ms, environment 10.20s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.6s
+  Running TypeScript ...
+Failed to type check.
+
+./lib/firebaseAdmin.ts:51:21
+Type error: Argument of type '{ credential: Credential; projectId: string | undefined; }' is not assignable to parameter of type 'AppOptions' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'projectId' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+
+  [90m49 |[0m       });
+  [90m50 |[0m     } [36melse[0m {
+[31m[1m>[0m [90m51 |[0m       initializeApp({
+  [90m   |[0m                     [31m[1m^[0m
+  [90m52 |[0m         credential: applicationDefault(),
+  [90m53 |[0m         projectId: process.env[[32m"NEXT_PUBLIC_FIREBASE_PROJECT_ID"[0m]?.trim(),
+  [90m54 |[0m       });
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 17633ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-37-37-204Z.log

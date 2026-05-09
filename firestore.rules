@@ -1,0 +1,37 @@
+rules_version = '2';
+
+// Firestore security rules for ring-core (MERGE-READY snippet).
+//
+// IMPORTANT:
+//   This file currently only declares the *audit log* policy. Your existing
+//   collections (calls, messages, video, demo data, etc.) are governed by
+//   whatever rules are already deployed in your Firebase project. When you
+//   roll this file out, MERGE these blocks into the rules file you actually
+//   deploy — do not blindly replace your live rules with this snippet, or
+//   client-side reads of calls/messages will start failing.
+//
+// Audit log policy:
+//   - `audit_logs` is server-only (Firebase Admin SDK).
+//   - Any client tier (web SDK, mobile SDK, anonymous) must NOT read or write
+//     directly. The Next.js API routes /api/audit-logs and
+//     /api/audit-logs/export are the only sanctioned read paths, and writes
+//     happen through the Admin SDK in `lib/audit/auditLog.ts`.
+//   - This is a defence-in-depth guard against compromised client credentials
+//     and protects the integrity of the audit trail.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Audit log (server-only) -----------------------------------------
+    match /audit_logs/{docId} {
+      allow read, write: if false;
+    }
+
+    // If AUDIT_LOGS_COLLECTION is overridden to a hospital-scoped name,
+    // mirror the deny-rule here as well, e.g.:
+    //
+    //   match /audit_logs_{hospitalId}/{docId} {
+    //     allow read, write: if false;
+    //   }
+  }
+}

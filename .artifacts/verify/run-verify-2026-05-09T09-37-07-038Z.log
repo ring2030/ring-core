@@ -1,0 +1,66 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:37:14
+   Duration  1.61s (transform 378ms, setup 0ms, import 737ms, tests 45ms, environment 9.78s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.4s
+  Running TypeScript ...
+Failed to type check.
+
+./lib/firebaseAdmin.ts:20:7
+Type error: Type '{ projectId: string | undefined; clientEmail: string | undefined; privateKey: string | undefined; }' is not assignable to type 'ServiceAccountLike' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'projectId' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+
+  [90m18 |[0m     [36mtry[0m {
+  [90m19 |[0m       [36mconst[0m parsed = [33mJSON[0m.parse(rawJson) [36mas[0m [33mServiceAccountLike[0m;
+[31m[1m>[0m [90m20 |[0m       [36mreturn[0m {
+  [90m   |[0m       [31m[1m^[0m
+  [90m21 |[0m         projectId: parsed.projectId,
+  [90m22 |[0m         clientEmail: parsed.clientEmail,
+  [90m23 |[0m         privateKey: normalizePrivateKey(parsed.privateKey),
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 17563ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-37-07-038Z.log

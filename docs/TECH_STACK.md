@@ -43,7 +43,7 @@ Gemini access is server-side only. **`/api/chat` uses REST (`fetch`)**, while **
 | Package | Version | Why |
 |---------|---------|-----|
 | [firebase](https://firebase.google.com/) | 12.11.0 | Firestore (client) — real-time call updates, video message storage |
-| [firebase-admin](https://firebase.google.com/docs/admin) | 13.7.0 | Firestore (server-side API routes), secure operations |
+| [firebase-admin](https://firebase.google.com/docs/admin) | 13.9.0 | Firestore (server-side API routes), audit log persistence |
 
 ## UI
 
@@ -99,5 +99,18 @@ npm run run:auto      # Watch mode: reruns quality on file changes
 | `GEMINI_API_BASE` | No | Override Gemini base URL (used by chat route) |
 | `GEMINI_MODEL` | No | Override model (default: `gemini-2.5-flash`) |
 | `NEXT_PUBLIC_VIDEO_MESSAGES_COLLECTION` | No | Firestore collection for family videos (default: `messages`) |
+| `APP_SIGNING_SECRET` | **Yes in production** | HMAC secret for session/invite tokens. In `NODE_ENV=production` the app refuses to issue or verify tokens without this set. Use a cryptographically-random value (≥32 bytes). |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | One of the Admin paths is required in production | Single-line JSON service account (preferred). |
+| `FIREBASE_ADMIN_PROJECT_ID` / `FIREBASE_ADMIN_CLIENT_EMAIL` / `FIREBASE_ADMIN_PRIVATE_KEY` | Alternative Admin path | Discrete env vars. `\n` is normalised to real newlines. |
+| `AUDIT_LOGS_COLLECTION` | No | Override Firestore collection name (default: `audit_logs`). |
 
 Copy `.env.example` to `.env.local` and fill in values before starting the dev server.
+
+## Audit Log Persistence
+
+Audit events (login attempts, family-summary access, etc.) are written through the Firebase Admin SDK to the `audit_logs` collection.
+
+- **Reads** use `where("hospitalId","==",X).orderBy("at","desc").limit(N)`. Deploy `firestore.indexes.json` (or run `firebase deploy --only firestore:indexes`) so the composite index `(hospitalId ASC, at DESC)` exists; the first query against an un-indexed Firestore project will throw `FAILED_PRECONDITION`.
+- **Writes** in production fail fast if Firestore is unreachable — there is no `/tmp` fallback in `NODE_ENV=production`. Callers must surface the error and the platform alerting (e.g. Vercel logs / Cloud Logging) must catch the structured `level=error scope=audit` JSON line.
+- **Dev/test** falls back to `<cwd>/.data/audit-log.jsonl` (or `/tmp/.ring-data/audit-log.jsonl` on serverless dev) so contributors without Admin credentials can still iterate.
+- **Security rules**: `firestore.rules` denies all client reads/writes against `audit_logs`. Only the Admin SDK (server) can touch the collection. Merge this snippet into your live rules file before deploy.

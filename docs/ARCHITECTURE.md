@@ -83,6 +83,23 @@ updateDoc(calls/{id}, { 要約, 緊急度 })
 POST /api/family-summary
   │  @google/genai SDK (GoogleGenAI.models.generateContent)
 ```
+## Audit Log Persistence
+Operational events flow through `lib/audit/auditLog.ts` and are written by the Firebase Admin SDK to the `audit_logs` Firestore collection.
+```
+appendAuditEvent / listAuditEvents
+        │
+        ▼
+firebase-admin (Service Account JSON or split env vars)
+        │
+        ▼
+Firestore: audit_logs   ── where(hospitalId,==,X).orderBy(at,desc).limit(N)
+        │
+   (production: fail-fast on Firestore errors,
+    structured JSON `level=error scope=audit` log line)
+        │
+   (dev/test only: JSONL fallback at <cwd>/.data/audit-log.jsonl)
+```
+Server-only access is enforced by `firestore.rules` (`audit_logs` is `allow read, write: if false`); the `/api/audit-logs` and `/api/audit-logs/export` routes are the only sanctioned read paths.
 ## Firestore Data Model
 ### `calls` collection
 | Field | Type | Description |

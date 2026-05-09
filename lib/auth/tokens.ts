@@ -28,7 +28,15 @@ const DEFAULT_INVITE_TTL_SEC = 60 * 60 * 8;
 const DEV_FALLBACK_SECRET = "ring-core-dev-only-secret-change-me";
 
 function getSigningSecret(): string {
-  return process.env["APP_SIGNING_SECRET"]?.trim() || DEV_FALLBACK_SECRET;
+  const secret = process.env["APP_SIGNING_SECRET"]?.trim();
+  if (secret) return secret;
+  if (process.env["NODE_ENV"] === "production") {
+    throw new Error(
+      "APP_SIGNING_SECRET is required in production. " +
+        "Set it in the platform environment (e.g. Vercel) before sessions or invites can be issued/verified.",
+    );
+  }
+  return DEV_FALLBACK_SECRET;
 }
 
 function encodePayload(payload: object): string {
