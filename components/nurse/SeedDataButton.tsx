@@ -6,99 +6,111 @@ import { DatabaseZap, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 import { getFirestoreDb } from "@/lib/firebase";
 import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 
-// --- Demo seed templates (weighted random + realistic spread) ---
+// ─── シナリオ定義 ──────────────────────────────────────────────────────────────
+// [reasonCode, transcript（日本語発話）, aiSummary（英語）, priority, senderName]
+type Scene = [string, string, string, number, string];
 
-interface Template {
-  reason: string;
-  priority: number;
-  summary: string;
-  note: string;
-  sender: string;
-}
+const SCENES: Scene[] = [
+  // 清子 — お話
+  ["お話", "娘の写真もう一回見せてほしいな", "Patient asked for daughter's photo again. AI showed and reminisced together.", 1, "清子"],
+  ["お話", "息子は今日来るって言ってたよね、もう夕方だけど", "Asking about son's visit; time disorientation. AI reassured gently.", 1, "清子"],
+  ["お話", "ここ病院だっけ？ さっきまで家にいた気がして", "Mild disorientation. AI reoriented calmly; patient relaxed.", 2, "清子"],
+  ["お話", "夜中に怖い夢を見た、また同じ夢なの", "Frightening recurring dream. AI listened and offered reassurance.", 2, "清子"],
+  ["お話", "胸がギュッてなる、いつもの薬は飲んだかしら", "Chest tightness + medication uncertainty. Escalated to nurse.", 4, "清子"],
+  ["お話", "テレビの歌番組また見たいなあ", "Wanted to watch old music show. AI arranged distraction.", 1, "清子"],
+  ["お話", "今日って何曜日だっけ、月曜と火曜がごっちゃで", "Day-of-week confusion. AI gently clarified the schedule.", 2, "清子"],
+  ["お話", "看護師さんいつも優しくしてくれてありがとう", "Expressed sincere gratitude to nursing staff.", 1, "清子"],
+  ["お話", "お水ちょうだい、コップ持てなくてこぼしちゃった", "Needed water; grip difficulty noted. Flagged for nurse.", 2, "清子"],
+  ["お話", "毛布がずれて足先が冷たい", "Feet cold; blanket shifted. Staff adjusted.", 1, "清子"],
+  ["お話", "廊下に知らない人が見える気がして怖い", "Reports seeing stranger in hallway. AI stayed calm; nurse alerted.", 3, "清子"],
+  ["お話", "娘のこと話してもいい？ 最近会ってないから", "Wanted to talk about daughter. Emotional support conversation.", 1, "清子"],
+  ["お話", "薬飲んだかどうかわからなくて不安", "Uncertain about medication. Chart verification needed.", 3, "清子"],
+  ["お話", "昔ね、工場で働いてたころが楽しかった", "Positive long-term memory shared. Reminiscence session.", 1, "清子"],
+  // 清子 — トイレ
+  ["トイレ", "トイレ行きたいの、急いで", "Urgent restroom via gaze and voice. Assisted promptly.", 1, "清子"],
+  ["トイレ", "また行きたくなっちゃった、ごめんね", "Repeat restroom call 40 min later; fluid balance check.", 2, "清子"],
+  ["トイレ", "夜中なのにごめん、行きたくて", "Night restroom; escorted safely.", 1, "清子"],
 
-const TEMPLATES: Template[] = [
-  { reason: "Chat", priority: 1, summary: "Small talk / routine", note: "AI chat start", sender: "Kiyoko" },
-  { reason: "Chat", priority: 1, summary: "Memory sharing, calm mood", note: "AI chat start", sender: "Kiyoko" },
-  { reason: "Chat", priority: 1, summary: "Chat about music", note: "AI chat start", sender: "Kiyoko" },
-  { reason: "Chat", priority: 1, summary: "Grandkids topic, upbeat", note: "AI chat start", sender: "Kiyoko Arai" },
+  // 太郎 — お話
+  ["お話", "左足の筋がこるんだよ、夕方からずっと", "Left leg cramping since evening. Comfort given; nurse flagged.", 3, "太郎"],
+  ["お話", "また壁に人がいるように見える、夜がこわい", "Visual hallucination (Lewy). Grounded calmly; nurse aware.", 3, "太郎"],
+  ["お話", "頭がキーンとして光が眩しい", "Severe headache + photophobia. In-person eval recommended.", 4, "太郎"],
+  ["お話", "歩こうとしたらよろけて壁につかまったよ", "Near-fall. Mobility safety check urgent.", 4, "太郎"],
+  ["お話", "薬の袋がいっぱいあってどれが今日のかわからない", "Can't identify daily meds. Nurse to verify.", 3, "太郎"],
+  ["お話", "寒いのに汗かいてる、なんか変だな", "Cold + sweating simultaneously. Vitals check recommended.", 3, "太郎"],
+  ["お話", "夢と現実がごっちゃになる感じがある", "Reports dream-reality blending. Empathetic listening.", 2, "太郎"],
+  ["お話", "体がかたくて起き上がれない、手伝ってほしい", "Morning rigidity; needs transfer help.", 3, "太郎"],
+  ["お話", "飲み込みにくくて食事が心配なんだ", "Dysphagia concern. SLP review needed.", 3, "太郎"],
+  ["お話", "昼寝したらすっきりしたよ、ありがとう", "Felt refreshed after nap. Positive mood.", 1, "太郎"],
+  // 太郎 — トイレ
+  ["トイレ", "トイレ行きたい、急いでお願い", "Urgent toileting with Lewy-related rigidity.", 2, "太郎"],
+  ["トイレ", "夕方にまたトイレ、体固くて時間かかる", "Evening bathroom; rigidity. Patience needed.", 2, "太郎"],
 
-  { reason: "Lonely", priority: 2, summary: "Loneliness — wants listening", note: "AI chat start", sender: "Kiyoko" },
-  { reason: "Can't sleep", priority: 2, summary: "Insomnia, night anxiety", note: "AI chat start", sender: "Kiyoko" },
-  { reason: "Anxious", priority: 2, summary: "Vague anxiety", note: "AI chat start", sender: "Kiyoko Arai" },
-  { reason: "Lonely", priority: 2, summary: "Wants family visit", note: "AI chat start", sender: "Taro Murase" },
-
-  { reason: "Wants water", priority: 3, summary: "Hydration request", note: "", sender: "Kiyoko" },
-  { reason: "Wants medication", priority: 3, summary: "PRN med request", note: "", sender: "Kiyoko" },
-  { reason: "Restroom", priority: 3, summary: "Toileting help", note: "Gaze send", sender: "Kiyoko" },
-  { reason: "Reposition", priority: 3, summary: "Repositioning help", note: "", sender: "Kiyoko Arai" },
-  { reason: "Cold", priority: 3, summary: "Wants blanket", note: "", sender: "Taro Murase" },
-  { reason: "Hungry", priority: 3, summary: "Hungry after mealtime", note: "", sender: "Kiyoko Arai" },
-
-  { reason: "Urgent restroom", priority: 4, summary: "Urgent toileting", note: "Gaze send", sender: "Kiyoko" },
-  { reason: "Dizzy", priority: 4, summary: "Dizziness, fall risk", note: "", sender: "Kiyoko" },
-  { reason: "Unwell", priority: 4, summary: "Nausea, needs vitals", note: "", sender: "Kiyoko Arai" },
-  { reason: "Help", priority: 4, summary: "Calls for help", note: "", sender: "Taro Murase" },
-
-  { reason: "Chest pain", priority: 5, summary: "URGENT: chest pain", note: "", sender: "Kiyoko" },
-  { reason: "Fallen", priority: 5, summary: "URGENT: fall", note: "", sender: "Kiyoko Arai" },
-  { reason: "Pain", priority: 5, summary: "URGENT: severe headache", note: "", sender: "Kiyoko" },
+  // 花子 — お話
+  ["お話", "お腹すいた、おやつってまだある？", "Hungry between meals. Light snack offered per care plan.", 1, "花子"],
+  ["お話", "窓の外の緑がきれい、散歩できるといいな", "Positive comment on nature; hope for a walk.", 1, "花子"],
+  ["お話", "孫に電話したいけど番号覚えてないの", "Wants to call grandchild; needs phone help.", 2, "花子"],
+  ["お話", "寝返りできなくて腰が痛い、助けて", "Can't reposition; lower back pain. Pressure ulcer prevention.", 3, "花子"],
+  ["お話", "咳が出て止まらない、喉がイガイガする", "Persistent cough; respiratory check recommended.", 3, "花子"],
+  ["お話", "点滴のポンプの音がカチカチして眠れない", "IV pump noise preventing sleep. Distracted; alarm review.", 1, "花子"],
+  ["お話", "何でもいいから話そうよ、さみしいの", "Directly expressed loneliness. AI chatted for 10+ min.", 1, "花子"],
+  ["お話", "吐き気がする、匂いがきつくて気持ち悪い", "Nausea triggered by smell. Antiemetic considered.", 3, "花子"],
+  ["お話", "昔の話しちゃっていい？ 若い頃のことが浮かぶの", "Wanted to share past memories. Life-review conversation.", 1, "花子"],
+  ["お話", "頭がズキンとする、右側だけ痛い", "Right-sided headache. Monitor BP; vascular check.", 3, "花子"],
+  ["お話", "今日はお日様いいね、気分上がるな", "Positive mood on sunny day. Joyful social interaction.", 1, "花子"],
+  // 花子 — トイレ
+  ["トイレ", "夜中にトイレ行きたくなっちゃった", "Night restroom call. Safely escorted.", 1, "花子"],
+  ["トイレ", "ごはんの前にトイレ行っておきたい", "Pre-meal restroom routine. Assisted.", 1, "花子"],
+  ["トイレ", "急いで、もう限界かも", "Urgent restroom; prompt response needed.", 2, "花子"],
 ];
 
-// Weighted random: tune frequency per priority band
-const WEIGHT_MAP: Record<number, number> = { 1: 15, 2: 28, 3: 35, 4: 15, 5: 7 };
+// 時間帯の重み: 早朝〜深夜
+const HOUR_WEIGHTS = [
+  1, 1, 1, 2, 2, 4,  // 0–5
+  7, 9, 9, 8, 8, 9,  // 6–11
+  8, 8, 9, 9, 8, 8,  // 12–17
+  8, 7, 6, 5, 4, 2,  // 18–23
+];
 
-function pickTemplate(): Template {
-  const pool: Template[] = [];
-  TEMPLATES.forEach((t) => {
-    const w = WEIGHT_MAP[t.priority] ?? 10;
-    for (let i = 0; i < w; i++) pool.push(t);
-  });
-  return pool[Math.floor(Math.random() * pool.length)] ?? TEMPLATES[0]!;
-}
-
-/** Random timestamp over the last 7 days, biased toward daytime hours. */
-function randomTimestamp(daysAgo: number): Timestamp {
-  const base = new Date();
-  base.setDate(base.getDate() - daysAgo);
-
-  const hourWeights = [
-    1, 1, 1, 1, 2, 3, // 0–5
-    5, 8, 9, 9, 8, 9, // 6–11
-    9, 8, 8, 9, 9, 8, // 12–17
-    8, 7, 6, 4, 3, 2, // 18–23
-  ];
-  const total = hourWeights.reduce((a, b) => a + b, 0);
-  let rand = Math.random() * total;
-  let hour = 0;
+function weightedHour(): number {
+  const total = HOUR_WEIGHTS.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
   for (let i = 0; i < 24; i++) {
-    rand -= hourWeights[i] ?? 0;
-    if (rand <= 0) {
-      hour = i;
-      break;
-    }
+    r -= HOUR_WEIGHTS[i] ?? 0;
+    if (r <= 0) return i;
   }
-
-  base.setHours(hour, Math.floor(Math.random() * 60), Math.floor(Math.random() * 60), 0);
-  return Timestamp.fromDate(base);
+  return 9;
 }
 
-function callDocPayload(ts: Timestamp, tpl: Template) {
-  const reasons = [tpl.reason];
+function randomTs(daysAgo: number): Timestamp {
+  const d = new Date();
+  d.setDate(d.getDate() - daysAgo);
+  d.setHours(weightedHour(), Math.floor(Math.random() * 60), 0, 0);
+  // 未来にならないよう今より過去に補正
+  if (d.getTime() > Date.now()) d.setHours(d.getHours() - 1);
+  return Timestamp.fromDate(d);
+}
+
+function buildDoc(ts: Timestamp, scene: Scene) {
+  const [reason, transcript, summary, priority, senderName] = scene;
+  const tri = transcript.trim();
   return {
-    reasonCodes: reasons,
-    note: tpl.note,
-    senderName: tpl.sender,
+    reasonCodes: [reason],
+    note: "",
+    senderName,
     senderRole: "patient" as const,
     createdAt: ts,
-    priority: tpl.priority,
-    aiSummary: tpl.summary,
-    // Legacy fields (same shape as buildCallWritePayload)
-    理由: reasons,
-    特記事項: tpl.note,
-    送信者: tpl.sender,
+    priority,
+    aiSummary: summary,
+    ...(tri ? { transcript: tri } : {}),
+    // legacy compat
+    理由: reason,
+    特記事項: "",
+    送信者: senderName,
     送信日時: ts,
-    緊急度: tpl.priority,
-    要約: tpl.summary,
+    緊急度: priority,
+    要約: summary,
+    認識文: tri,
   };
 }
 
@@ -113,52 +125,51 @@ export default function SeedDataButton() {
   const seed = async () => {
     setStatus("seeding");
     setProgress(0);
-    setMessage("Generating demo data…");
+    setMessage("生成中…");
 
     try {
       const db = getFirestoreDb();
-      const callsCollection = getCallsCollectionNameForCurrentHospital();
-      const dailyCounts = [12, 14, 13, 16, 15, 18, 17]; // 105 total across 7 days
-      const batchDocs: { ts: Timestamp; tpl: Template }[] = [];
+      const col = getCallsCollectionNameForCurrentHospital();
 
-      dailyCounts.forEach((count, dayIdx) => {
-        const daysAgo = 6 - dayIdx;
+      // 21日分 × 各日ランダムに SCENES からピック（1日 12〜18 件）
+      const entries: { ts: Timestamp; scene: Scene }[] = [];
+      for (let daysAgo = 21; daysAgo >= 0; daysAgo--) {
+        const count = 12 + Math.floor(Math.random() * 7); // 12〜18
         for (let i = 0; i < count; i++) {
-          batchDocs.push({ ts: randomTimestamp(daysAgo), tpl: pickTemplate() });
+          const scene = SCENES[Math.floor(Math.random() * SCENES.length)]!;
+          entries.push({ ts: randomTs(daysAgo), scene });
         }
-      });
+      }
 
-      const CHUNK = 50;
-      for (let i = 0; i < batchDocs.length; i += CHUNK) {
-        const chunk = batchDocs.slice(i, i + CHUNK);
+      const CHUNK = 450;
+      for (let i = 0; i < entries.length; i += CHUNK) {
         const batch = writeBatch(db);
-        chunk.forEach(({ ts, tpl }) => {
-          const ref = doc(collection(db, callsCollection));
-          batch.set(ref, callDocPayload(ts, tpl));
-        });
+        for (const { ts, scene } of entries.slice(i, i + CHUNK)) {
+          batch.set(doc(collection(db, col)), buildDoc(ts, scene));
+        }
         await batch.commit();
-        setProgress(Math.round(((i + chunk.length) / batchDocs.length) * 100));
+        setProgress(Math.round(((i + Math.min(CHUNK, entries.length - i)) / entries.length) * 100));
       }
 
       setStatus("done");
-      setMessage(`✅ Added ${batchDocs.length} demo records`);
-      setTimeout(() => setStatus("idle"), 4000);
+      setMessage(`✅ ${entries.length} 件を追加しました`);
+      setTimeout(() => { setStatus("idle"); setMessage(""); }, 5000);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatus("error");
-      setMessage(`❌ Error: ${msg}`);
+      setMessage(`❌ ${msg}`);
     }
   };
 
   const deleteAll = async () => {
-    if (!confirm("⚠️ Delete ALL call records in Firestore?")) return;
+    if (!confirm("⚠️ コレクション内の全コールを削除しますか？")) return;
     setStatus("deleting");
-    setMessage("Deleting…");
+    setMessage("削除中…");
     try {
       const db = getFirestoreDb();
-      const callsCollection = getCallsCollectionNameForCurrentHospital();
-      const snap = await getDocs(collection(db, callsCollection));
-      const CHUNK = 50;
+      const col = getCallsCollectionNameForCurrentHospital();
+      const snap = await getDocs(collection(db, col));
+      const CHUNK = 450;
       for (let i = 0; i < snap.docs.length; i += CHUNK) {
         const batch = writeBatch(db);
         snap.docs.slice(i, i + CHUNK).forEach((d) => batch.delete(d.ref));
@@ -166,12 +177,12 @@ export default function SeedDataButton() {
         setProgress(Math.round(((i + CHUNK) / snap.docs.length) * 100));
       }
       setStatus("done");
-      setMessage(`🗑️ Deleted ${snap.docs.length} records`);
-      setTimeout(() => setStatus("idle"), 3000);
+      setMessage(`🗑️ ${snap.docs.length} 件削除しました`);
+      setTimeout(() => { setStatus("idle"); setMessage(""); }, 4000);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatus("error");
-      setMessage(`❌ Error: ${msg}`);
+      setMessage(`❌ ${msg}`);
     }
   };
 
@@ -188,26 +199,26 @@ export default function SeedDataButton() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-8 z-50 w-64 rounded-2xl border border-violet-200 bg-white p-4 shadow-2xl">
+        <div className="absolute right-0 top-8 z-50 w-72 rounded-2xl border border-violet-200 bg-white p-4 shadow-2xl">
           <p className="mb-3 flex items-center gap-1.5 text-xs font-black text-violet-700">
             <DatabaseZap className="h-3.5 w-3.5" />
-            Demo data (dev only)
+            デモデータ（21日分 / 3名 / 日本語会話）
           </p>
 
-          {busy && (
+          {(busy || status === "done" || status === "error") && (
             <div className="mb-3">
-              <div className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
-                <div
-                  className="h-full rounded-full bg-violet-500 transition-all duration-300"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="text-[10px] text-stone-500">{progress}%</p>
+              {busy && (
+                <div className="mb-1 h-1.5 w-full overflow-hidden rounded-full bg-stone-100">
+                  <div
+                    className="h-full rounded-full bg-violet-500 transition-all duration-300"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              )}
+              {message && (
+                <p className="rounded-xl bg-stone-50 px-3 py-2 text-[10px] text-stone-600">{message}</p>
+              )}
             </div>
-          )}
-
-          {message && (
-            <p className="mb-3 rounded-xl bg-stone-50 px-3 py-2 text-[10px] text-stone-600">{message}</p>
           )}
 
           <div className="flex flex-col gap-2">
@@ -217,17 +228,11 @@ export default function SeedDataButton() {
               className="flex items-center justify-center gap-2 rounded-xl bg-violet-500 px-4 py-2.5 text-xs font-black text-white shadow-sm transition-all hover:bg-violet-600 active:scale-95 disabled:opacity-50"
             >
               {status === "seeding" ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Working…
-                </>
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 生成中…</>
               ) : status === "done" ? (
-                <>
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Done
-                </>
+                <><CheckCircle2 className="h-3.5 w-3.5" /> 完了</>
               ) : (
-                <>
-                  <DatabaseZap className="h-3.5 w-3.5" /> Seed 7 days (105)
-                </>
+                <><DatabaseZap className="h-3.5 w-3.5" /> 21日分を投入</>
               )}
             </button>
 
@@ -237,13 +242,9 @@ export default function SeedDataButton() {
               className="flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-500 transition-all hover:bg-red-100 active:scale-95 disabled:opacity-50"
             >
               {status === "deleting" ? (
-                <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting…
-                </>
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 削除中…</>
               ) : (
-                <>
-                  <Trash2 className="h-3.5 w-3.5" /> Delete all calls
-                </>
+                <><Trash2 className="h-3.5 w-3.5" /> 全コール削除</>
               )}
             </button>
           </div>
