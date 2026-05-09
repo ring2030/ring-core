@@ -516,7 +516,7 @@ export default function GrandmaGazePage() {
         <span className="text-gray-300">·</span>
         <span>Eye-gaze nurse call · Built by 11–16 year old girls in Japan</span>
         <Link
-          href="/demo-1min"
+          href="/tour"
           className="text-blue-600 underline underline-offset-2 hover:text-blue-700"
         >
           60-sec demo →

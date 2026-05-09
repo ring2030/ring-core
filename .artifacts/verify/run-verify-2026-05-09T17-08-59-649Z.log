@@ -1,0 +1,17 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\components\nurse\SeedDataButton.tsx
+  252:11  error  Parsing error: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+
+✖ 1 problem (1 error, 0 warnings)
+
+
+--- [lint] exit_code=1
+
+❌ run:verify failed in 4615ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T17-08-59-649Z.log

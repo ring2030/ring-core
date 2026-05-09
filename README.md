@@ -88,11 +88,13 @@ Each update addressed a concrete operational risk, not feature creep. The bold r
 3. **Staff** — Open `/nurse-login` (demo **ID `1` / password `1`** in dev—change for production), then `/dashboard/nurse` for the live queue.
 4. **Family** — Staff-generated invites; family views under `/dashboard/family` and `/dashboard/history` after sign-in / token flow via `/login` and `/access?token=…`.
 
-For a scripted demo, use `/demo` or `/demo-1min` if your deployment includes those routes.
-The 60-second judge-friendly flow is available at [`/demo-1min`](http://localhost:3000/demo-1min) in local development.
+For a scripted demo, use `/tour` (recommended for judges), `/demo`, or `/demo-1min` if your deployment includes those routes.
+`/tour` is a 60-second auto-playing experience that moves from the nurse dashboard to the family view, then shows how the same story keeps families connected across distance — keyboard `Space` pauses, `←` / `→` skips, `Esc` exits.
 `/demo-1min` also includes a **30-second post-demo survey** to collect implementation evidence (impact, trust, adoption intent).
+
 Production demo links:
-- **Judges: start here →** [`https://ring-core2026.vercel.app/demo-1min`](https://ring-core2026.vercel.app/demo-1min) (60-second walkthrough with built-in feedback survey)
+- **Judges: start here →** [`https://ring-core2026.vercel.app/tour`](https://ring-core2026.vercel.app/tour) (60-second guided tour: nurse → family → staying connected)
+- [`https://ring-core2026.vercel.app/demo-1min`](https://ring-core2026.vercel.app/demo-1min) (60-second walkthrough with built-in feedback survey)
 - [`https://ring-core2026.vercel.app/demo`](https://ring-core2026.vercel.app/demo) (screen-record style demo page)
 - [`https://ring-core2026.vercel.app`](https://ring-core2026.vercel.app) (main patient view)
 
@@ -125,6 +127,7 @@ Production demo links:
 | `/login` | Staff & family — credentials + invite token |
 | `/access?token=…` | Invite landing → `GET /api/invite/consume` |
 | `/dashboard/history` | Family — day-by-day history |
+| `/tour` | Judges — 60-second guided tour (auto-play; `Space` pauses, arrows skip, `Esc` exits) |
 | `/demo` · `/demo-1min` | Demo-oriented pages |
 | `/record` | Staff — activity / record UI |
 | `/kiyoko` | Alternate simplified patient flow |
@@ -246,7 +249,8 @@ ring-core/
 
 ## 日本語（概要）
 
-**本番デモ:** [https://ring-core2026.vercel.app](https://ring-core2026.vercel.app)
+**本番デモ:** [https://ring-core2026.vercel.app](https://ring-core2026.vercel.app)  
+**審査員向け 60 秒ツアー:** [https://ring-core2026.vercel.app/tour](https://ring-core2026.vercel.app/tour)（看護 → 家族 → 距離を越えたつながり）
 
 ### スクリーンショット（プレースホルダー）
 
@@ -283,6 +287,7 @@ ring-core/
 | `/login` | スタッフ・家族（ログイン・招待トークン） |
 | `/access?token=…` | 招待リンク受け取り → consume へリダイレクト |
 | `/dashboard/history` | 家族向け履歴 |
+| `/tour` | 審査員向け 60 秒ガイド付きツアー（自動再生・`Space` で一時停止） |
 | `/demo` · `/demo-1min` | デモ用ページ |
 | `/record` | 記録 UI |
 | `/kiyoko` | 患者向け代替 UI |

@@ -1,10 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { writeBatch, doc, collection, Timestamp, getDocs } from "firebase/firestore";
+import {
+  writeBatch,
+  doc,
+  collection,
+  Timestamp,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { DatabaseZap, Loader2, CheckCircle2, Trash2 } from "lucide-react";
 import { getFirestoreDb } from "@/lib/firebase";
-import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
+import {
+  getCallsCollectionNameForCurrentHospital,
+  getCurrentHospitalIdFromCookie,
+} from "@/lib/auth/clientHospital";
+import { UI_DEMO_SEED_TAG } from "@/lib/demo/demoSeedTags";
 
 // ─── シナリオ定義 ──────────────────────────────────────────────────────────────
 // [reasonCode, transcript（日本語発話）, aiSummary（英語）, priority, senderName]
@@ -103,6 +115,8 @@ function buildDoc(ts: Timestamp, scene: Scene) {
     priority,
     aiSummary: summary,
     ...(tri ? { transcript: tri } : {}),
+    seedTag: UI_DEMO_SEED_TAG,
+    hospitalId: getCurrentHospitalIdFromCookie(),
     // legacy compat
     理由: reason,
     特記事項: "",
@@ -161,24 +175,38 @@ export default function SeedDataButton() {
     }
   };
 
-  const deleteAll = async () => {
-    if (!confirm("⚠️ コレクション内の全コールを削除しますか？")) return;
+  const deleteTaggedDemo = async () => {
+    if (
+      !confirm(
+        "⚠️ DEVボタンで入れたデモ（seedTag）だけを削除します。実機のコールは残ります。よろしいですか？",
+      )
+    )
+      return;
     setStatus("deleting");
     setMessage("削除中…");
     try {
       const db = getFirestoreDb();
       const col = getCallsCollectionNameForCurrentHospital();
-      const snap = await getDocs(collection(db, col));
+      const snap = await getDocs(
+        query(collection(db, col), where("seedTag", "==", UI_DEMO_SEED_TAG)),
+      );
       const CHUNK = 450;
       for (let i = 0; i < snap.docs.length; i += CHUNK) {
         const batch = writeBatch(db);
         snap.docs.slice(i, i + CHUNK).forEach((d) => batch.delete(d.ref));
         await batch.commit();
-        setProgress(Math.round(((i + CHUNK) / snap.docs.length) * 100));
+        setProgress(
+          snap.docs.length
+            ? Math.round(((i + CHUNK) / snap.docs.length) * 100)
+            : 100,
+        );
       }
       setStatus("done");
-      setMessage(`🗑️ ${snap.docs.length} 件削除しました`);
-      setTimeout(() => { setStatus("idle"); setMessage(""); }, 4000);
+      setMessage(`🗑️ UIデモ ${snap.docs.length} 件を削除しました`);
+      setTimeout(() => {
+        setStatus("idle");
+        setMessage("");
+      }, 4000);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
       setStatus("error");
@@ -204,7 +232,10 @@ export default function SeedDataButton() {
             <DatabaseZap className="h-3.5 w-3.5" />
             デモデータ（21日分 / 3名 / 日本語会話）
           </p>
-
+          <p className="mb-3 text-[10px] leading-snug text-stone-500">
+            投入データには <code className="rounded bg-stone-100 px-0.5">seedTag</code> が付きます。
+            毎日の自動更新（Vercel Cron）はタグ付きデモだけ差し替えます。実機の記録は消しません。
+          </p>
           {(busy || status === "done" || status === "error") && (
             <div className="mb-3">
               {busy && (
@@ -237,14 +268,14 @@ export default function SeedDataButton() {
             </button>
 
             <button
-              onClick={deleteAll}
+              onClick={deleteTaggedDemo}
               disabled={busy}
               className="flex items-center justify-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2 text-xs font-bold text-red-500 transition-all hover:bg-red-100 active:scale-95 disabled:opacity-50"
             >
               {status === "deleting" ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> 削除中…</>
               ) : (
-                <><Trash2 className="h-3.5 w-3.5" /> 全コール削除</>
+                <><Trash2 className="h-3.5 w-3.5" /> UIデモのみ削除</>
               )}
             </button>
           </div>
