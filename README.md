@@ -42,7 +42,7 @@ The default **patient UI is English**. Legacy Japanese labels in Firestore are n
 | **Gaze** | **MediaPipe iris path (default)** — in-browser face detection + gaze heuristics. **Eyedid (seeso)** — optional 5-point calibration (`NEXT_PUBLIC_EYEDID_LICENSE_KEY`). **Pointer / touch** — same two targets for demos or accessibility. |
 | **Patient home (`/`)** | Dwell on **Restroom** or **Chat**; voice + AI triage after **Chat** when enabled. |
 | **Staff / family** | Firestore-backed dashboards, signed invites, video-letter hooks (see routes). |
-| **AI** | **Google Gemini** via Route Handlers (`POST /api/chat`, `POST /api/family-summary`). Regex fallback if the API is unavailable. |
+| **AI** | **Gemini API (REST)** via Route Handlers (`POST /api/chat`, `POST /api/family-summary`); called server-side with `fetch`. Regex fallback if the API is unavailable. |
 
 Deeper design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Stack detail: [docs/TECH_STACK.md](docs/TECH_STACK.md)
 PoC docs (JA): [docs/poc-spec-contest-ja.md](docs/poc-spec-contest-ja.md) · [docs/poc-demo-checklist-ja.md](docs/poc-demo-checklist-ja.md) · [docs/poc-ops-runbook-ja.md](docs/poc-ops-runbook-ja.md)
@@ -57,7 +57,7 @@ Regression log (JA): [docs/regression-test-report-2026-04-27.md](docs/regression
 | **App** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
 | **Gaze** | TensorFlow.js, self-hosted MediaPipe-style assets under `public/`, optional Eyedid (`seeso`) |
 | **Data** | Firebase (Firestore, Storage as configured) |
-| **AI** | Google Gemini (server-only; `GEMINI_API_KEY`) |
+| **AI** | Gemini API (REST), called server-side via `fetch` from Route Handlers; `GEMINI_API_KEY` |
 | **Voice** | Web Speech API (Chrome / Edge) |
 | **Quality** | Vitest, ESLint, `run:verify` (lint + tests + production build) |
 
@@ -125,7 +125,7 @@ Production demo links:
 | `GET /api/audit-logs` · `GET /api/audit-logs/export` | Audit log list + CSV export |
 | `GET` / `POST /api/demo-feedback` | Stores and returns quick aggregate of 30-second survey results |
 
-**External APIs (configure, not in repo):** default Gemini base `https://generativelanguage.googleapis.com/v1beta` (override with `GEMINI_API_BASE`); Firebase & Eyedid configured in their consoles.
+**External APIs (configure, not in repo):** Gemini REST endpoint, default base `https://generativelanguage.googleapis.com/v1beta` (override with `GEMINI_API_BASE`), called from server Route Handlers via `fetch` — no Google SDK is bundled. Firebase & Eyedid configured in their consoles.
 
 **Static files:** e.g. `/@mediapipe/face_detection/…` from `public/@mediapipe/`.
 

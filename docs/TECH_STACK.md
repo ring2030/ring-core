@@ -10,21 +10,28 @@
 
 ## Gaze Tracking
 
-| Package | Version | Why |
-|---------|---------|-----|
-| [seeso](https://docs.eyedid.ai/) | 0.2.4 | Eyedid Web SDK — eye gaze tracking via webcam, WebAssembly-based. Provides calibration, gaze point (x,y), attention score, blink detection. |
+The patient home defaults to an **in-browser MediaPipe iris pipeline** (TensorFlow.js + self-hosted MediaPipe-style assets under `public/@mediapipe/`). No external SDK is required for the default path. **Eyedid (seeso)** is supported as an opt-in alternative for environments that want its 5-point calibration.
+
+| Path | Package | Version | Notes |
+|------|---------|---------|-------|
+| **Default** | `@tensorflow/tfjs` + self-hosted MediaPipe assets | (see `package.json`) | Face / iris detection + gaze heuristics; no license key, no calibration step. |
+| Opt-in | [`seeso`](https://docs.eyedid.ai/) | 0.2.4 | Eyedid Web SDK (WebAssembly). 5-point calibration, gaze point (x,y), attention score, blink detection. Enabled via `NEXT_PUBLIC_EYEDID_LICENSE_KEY`. |
 
 **Notes:**
-- Requires COOP/COEP headers on the page for SharedArrayBuffer (used by WASM threads)
-- Must be transpiled by Next.js (`transpilePackages` in next.config.ts)
-- License key required: `NEXT_PUBLIC_EYEDID_LICENSE_KEY`
+- Eyedid: must be transpiled by Next.js (`transpilePackages` in `next.config.ts`).
+- Eyedid: license key required only when this path is enabled (`NEXT_PUBLIC_EYEDID_LICENSE_KEY`).
+- ~~COOP/COEP headers~~ no longer set — current Eyedid build does not require `SharedArrayBuffer`. See the comment in `next.config.ts` for history.
 
 ## AI
 
-| Package | Version | Why |
-|---------|---------|-----|
-| [@google/genai](https://ai.google.dev/) | 1.46.0 | Primary Gemini SDK (structured output, responseSchema) |
-| [@google/generative-ai](https://ai.google.dev/) | 0.24.1 | Legacy SDK (family summary route) |
+No Google SDK is bundled. Both Route Handlers call the **Gemini REST API** directly via `fetch` (server-side only), keeping the dependency surface and bundle size minimal.
+
+| Surface | Endpoint | Notes |
+|---------|----------|-------|
+| Triage | `POST /api/chat` → Gemini `:generateContent` | Structured JSON reply for the voice/AI flow |
+| Family summary | `POST /api/family-summary` → Gemini `:generateContent` | Server-side summary from posted call data |
+
+**Base URL:** `https://generativelanguage.googleapis.com/v1beta` (override with `GEMINI_API_BASE`).
 
 **Models:**
 - Triage: `gemini-2.5-flash` (configurable via `GEMINI_MODEL`)
@@ -81,7 +88,7 @@ npm run run:auto      # Watch mode: reruns quality on file changes
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `NEXT_PUBLIC_EYEDID_LICENSE_KEY` | Yes | Eyedid/seeso gaze SDK license |
+| `NEXT_PUBLIC_EYEDID_LICENSE_KEY` | No (required only if the Eyedid path is enabled) | Eyedid/seeso gaze SDK license. The default MediaPipe iris path does not need this. |
 | `NEXT_PUBLIC_FIREBASE_API_KEY` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Yes | Firebase client config |

@@ -1,0 +1,117 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  23:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\components\kiyoko\VoiceTriageModal.tsx
+  83:9  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\user\Desktop\ring-core\hooks\useIrisGaze.ts
+  225:13  warning  'resultReady' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 5 problems (0 errors, 5 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+[1m[30m[46m RUN [49m[39m[22m [36mv4.1.4 [39m[90mC:/Users/user/Desktop/ring-core[39m
+
+ [32m✓[39m lib/dashboard/historyUtils.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m lib/gaze/eyedidStorage.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 4[2mms[22m[39m
+ [32m✓[39m lib/gaze/trackingLabel.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m lib/validateEnv.test.ts [2m([22m[2m6 tests[22m[2m)[22m[32m 9[2mms[22m[39m
+ [32m✓[39m lib/gaze/selection.test.ts [2m([22m[2m12 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m lib/gaze/tuning.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+ [32m✓[39m app/api/chat/route.test.ts [2m([22m[2m9 tests[22m[2m)[22m[32m 5[2mms[22m[39m
+ [32m✓[39m app/api/family-summary/route.test.ts [2m([22m[2m2 tests[22m[2m)[22m[32m 3[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m8 passed[39m[22m[90m (8)[39m
+[2m      Tests [22m [1m[32m43 passed[39m[22m[90m (43)[39m
+[2m   Start at [22m 17:11:18
+[2m   Duration [22m 1.11s[2m (transform 339ms, setup 0ms, import 528ms, tests 34ms, environment 6.57s)[22m
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.0 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.9s
+  Running TypeScript ...
+  Finished TypeScript in 2.8s ...
+  Collecting page data using 19 workers ...
+  Generating static pages using 19 workers (0/28) ...
+  Generating static pages using 19 workers (7/28) 
+  Generating static pages using 19 workers (14/28) 
+  Generating static pages using 19 workers (21/28) 
+✓ Generating static pages using 19 workers (28/28) in 326ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /access
+├ ƒ /api/audit-logs
+├ ƒ /api/audit-logs/export
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/hospital-switch
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/nurse-login
+├ ƒ /api/chat
+├ ƒ /api/demo-feedback
+├ ƒ /api/family-summary
+├ ƒ /api/invite
+├ ƒ /api/invite/consume
+├ ƒ /api/nurse-accounts
+├ ○ /dashboard
+├ ○ /dashboard/family
+├ ○ /dashboard/history
+├ ○ /dashboard/nurse
+├ ○ /demo
+├ ○ /demo-1min
+├ ○ /kiyoko
+├ ƒ /login
+├ ƒ /nurse-login
+├ ○ /record
+└ ○ /settings
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+--- [build] exit_code=0
+
+✅ run:verify passed in 15918ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T08-11-12-506Z.log
