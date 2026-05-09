@@ -38,33 +38,33 @@ const SENDERS = [
   "伊藤 ふみ", "中村 はる", "小林 ひさし",
 ];
 
-// [reason, transcript, note, summary, priority, hoursAgo]
-const SCENARIOS: Array<[string, string, string, string, number, number]> = [
-  ["トイレ", "", "Call button via gaze. Calm voice.", "Patient requested bathroom assistance. No distress signs detected.", 1, 0.3],
-  ["お話", "足が痛いんだけど", "Reports leg pain while talking slowly.", "Patient reports leg pain. Mild discomfort; monitor and reassess.", 2, 0.7],
-  ["お話", "お腹がすいた", "Meal request around non-meal time.", "Patient is hungry. Routine support and hydration suggested.", 1, 1.4],
-  ["お話", "寒くて眠れない", "Sleep disruption with cold sensation.", "Patient feels cold and cannot sleep. Offer blanket and reassurance.", 2, 2.1],
-  ["トイレ", "", "Second restroom call this shift.", "Bathroom assistance requested.", 1, 2.9],
-  ["お話", "胸が苦しい", "High-risk symptom expression.", "Patient reports chest tightness. Escalate to nurse immediately.", 5, 3.4],
-  ["お話", "娘の写真が見たい", "Emotional support request.", "Patient asked for family photo; companionship need observed.", 1, 4.2],
-  ["お話", "夜中に怖い夢を見た", "Night anxiety / fear after dream.", "Patient had a frightening dream and sought reassurance.", 2, 5.8],
-  ["トイレ", "", "Restroom request repeated within 30 minutes.", "Bathroom request repeated. Check hydration and urgency.", 2, 6.5],
-  ["お話", "頭が割れるように痛い", "Severe pain descriptor used.", "Severe headache reported. Urgent in-person evaluation recommended.", 4, 7.7],
-  ["お話", "テレビをつけてほしい", "Environmental comfort request.", "Patient requested TV to be turned on.", 1, 8.6],
-  ["お話", "息子はいつ来るの", "Frequent family-visit question.", "Patient repeatedly asks when son will visit. Emotional check-in advised.", 1, 10.3],
-  ["お話", "薬を飲み忘れた気がする", "Medication adherence uncertainty.", "Patient unsure about medication intake. Verify chart and schedule.", 3, 12.8],
-  ["トイレ", "", "Routine toileting support requested.", "Bathroom assistance requested.", 1, 14.5],
-  ["お話", "転びそうになった", "Near-fall report while standing.", "Patient reports near-fall. Mobility safety check recommended.", 4, 16.9],
-  ["お話", "何でもないんだけどね", "Called mainly for social presence.", "No specific medical request; likely seeking company.", 1, 18.4],
-  ["お話", "窓を開けたい", "Room comfort / ventilation request.", "Patient wants the window opened.", 1, 20.2],
-  ["トイレ", "", "Toileting support requested before sleep.", "Bathroom assistance requested.", 1, 22.8],
-  ["お話", "咳が止まらない", "Persistent cough complaint.", "Persistent cough reported. Vital signs and respiratory check suggested.", 3, 25.1],
-  ["お話", "お見舞いの花がきれい", "Positive mood statement.", "Patient shared a positive comment about visitor flowers.", 1, 28.3],
-  ["お話", "寝返りがうてない", "Position change assistance needed.", "Patient cannot reposition independently. Pressure-ulcer prevention support needed.", 3, 32.4],
-  ["トイレ", "", "Night restroom call.", "Bathroom assistance requested.", 1, 36.7],
-  ["お話", "看護師さんありがとう", "Expressed gratitude to staff.", "Patient expressed appreciation to nursing staff.", 1, 40.1],
-  ["お話", "点滴の音が気になる", "Sensory irritation from IV pump.", "Patient is bothered by IV pump sound; consider volume/alarm check.", 1, 44.2],
-  ["お話", "吐き気がする", "Nausea complaint with reduced appetite.", "Patient reports nausea. Consider anti-emetic protocol and reassessment.", 3, 48.0],
+// [reason, transcript, note, summary, priority]
+const SCENARIOS: Array<[string, string, string, string, number]> = [
+  ["トイレ", "", "Call button via gaze. Calm voice.", "Patient requested bathroom assistance. No distress signs detected.", 1],
+  ["お話", "足が痛いんだけど", "Reports leg pain while talking slowly.", "Patient reports leg pain. Mild discomfort; monitor and reassess.", 2],
+  ["お話", "お腹がすいた", "Meal request around non-meal time.", "Patient is hungry. Routine support and hydration suggested.", 1],
+  ["お話", "寒くて眠れない", "Sleep disruption with cold sensation.", "Patient feels cold and cannot sleep. Offer blanket and reassurance.", 2],
+  ["トイレ", "", "Second restroom call this shift.", "Bathroom assistance requested.", 1],
+  ["お話", "胸が苦しい", "High-risk symptom expression.", "Patient reports chest tightness. Escalate to nurse immediately.", 5],
+  ["お話", "娘の写真が見たい", "Emotional support request.", "Patient asked for family photo; companionship need observed.", 1],
+  ["お話", "夜中に怖い夢を見た", "Night anxiety / fear after dream.", "Patient had a frightening dream and sought reassurance.", 2],
+  ["トイレ", "", "Restroom request repeated within 30 minutes.", "Bathroom request repeated. Check hydration and urgency.", 2],
+  ["お話", "頭が割れるように痛い", "Severe pain descriptor used.", "Severe headache reported. Urgent in-person evaluation recommended.", 4],
+  ["お話", "テレビをつけてほしい", "Environmental comfort request.", "Patient requested TV to be turned on.", 1],
+  ["お話", "息子はいつ来るの", "Frequent family-visit question.", "Patient repeatedly asks when son will visit. Emotional check-in advised.", 1],
+  ["お話", "薬を飲み忘れた気がする", "Medication adherence uncertainty.", "Patient unsure about medication intake. Verify chart and schedule.", 3],
+  ["トイレ", "", "Routine toileting support requested.", "Bathroom assistance requested.", 1],
+  ["お話", "転びそうになった", "Near-fall report while standing.", "Patient reports near-fall. Mobility safety check recommended.", 4],
+  ["お話", "何でもないんだけどね", "Called mainly for social presence.", "No specific medical request; likely seeking company.", 1],
+  ["お話", "窓を開けたい", "Room comfort / ventilation request.", "Patient wants the window opened.", 1],
+  ["トイレ", "", "Toileting support requested before sleep.", "Bathroom assistance requested.", 1],
+  ["お話", "咳が止まらない", "Persistent cough complaint.", "Persistent cough reported. Vital signs and respiratory check suggested.", 3],
+  ["お話", "お見舞いの花がきれい", "Positive mood statement.", "Patient shared a positive comment about visitor flowers.", 1],
+  ["お話", "寝返りがうてない", "Position change assistance needed.", "Patient cannot reposition independently. Pressure-ulcer prevention support needed.", 3],
+  ["トイレ", "", "Night restroom call.", "Bathroom assistance requested.", 1],
+  ["お話", "看護師さんありがとう", "Expressed gratitude to staff.", "Patient expressed appreciation to nursing staff.", 1],
+  ["お話", "点滴の音が気になる", "Sensory irritation from IV pump.", "Patient is bothered by IV pump sound; consider volume/alarm check.", 1],
+  ["お話", "吐き気がする", "Nausea complaint with reduced appetite.", "Patient reports nausea. Consider anti-emetic protocol and reassessment.", 3],
 ];
 
 const DISORIENTED_SUFFIXES = [
@@ -91,6 +91,17 @@ function buildTranscript(base: string, idx: number): string {
   // Keep a minority of lines coherent for contrast.
   return base;
 }
+
+const SLOT_HOURS = [9, 14, 20];
+const DAY_RANGE = 20;
+const FALLBACK_SCENARIO: [string, string, string, string, number] = [
+  "お話",
+  "調子はどうかな",
+  "Fallback seeded note.",
+  "Fallback seeded summary.",
+  1,
+];
+const FALLBACK_SENDER = "田中 花子";
 
 export async function GET(req: NextRequest) {
   const expected = process.env["SEED_DEMO_SECRET"];
@@ -139,48 +150,59 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "unknown action" }, { status: 400 });
   }
 
-  const now = Date.now();
+  const now = new Date();
   const batch = db.batch();
+  let seededCount = 0;
+  let scenarioIndex = 0;
 
-  SCENARIOS.forEach(([reason, transcriptBase, note, summary, priority, hoursAgo], i) => {
-    const docRef = db.collection(collectionName).doc();
-    const ts = new Date(now - hoursAgo * 60 * 60 * 1000);
-    const sender = SENDERS[i % SENDERS.length];
-    const transcript = buildTranscript(transcriptBase, i);
-    const reasonCodes = [reason];
+  for (let dayOffset = -DAY_RANGE; dayOffset <= DAY_RANGE; dayOffset += 1) {
+    for (let slot = 0; slot < SLOT_HOURS.length; slot += 1) {
+      const scenario = SCENARIOS[scenarioIndex % SCENARIOS.length] ?? FALLBACK_SCENARIO;
+      scenarioIndex += 1;
+      const [reason, transcriptBase, note, summary, priority] = scenario;
+      const sender = SENDERS[scenarioIndex % SENDERS.length] ?? FALLBACK_SENDER;
+      const transcript = buildTranscript(transcriptBase, scenarioIndex);
+      const reasonCodes = [reason];
+      const ts = new Date(now);
+      ts.setDate(ts.getDate() + dayOffset);
+      const slotHour = SLOT_HOURS[slot] ?? 12;
+      ts.setHours(slotHour + (scenarioIndex % 2), (scenarioIndex * 7) % 60, 0, 0);
+      const docRef = db.collection(collectionName).doc();
 
-    batch.set(docRef, {
-      // Canonical fields (for normalized dashboard/family reads).
-      reasonCodes,
-      note,
-      senderName: sender,
-      senderRole: "patient",
-      createdAt: Timestamp.fromDate(ts),
-      priority,
-      aiSummary: summary,
-      ...(transcript ? { transcript } : {}),
+      batch.set(docRef, {
+        // Canonical fields (for normalized dashboard/family reads).
+        reasonCodes,
+        note,
+        senderName: sender,
+        senderRole: "patient",
+        createdAt: Timestamp.fromDate(ts),
+        priority,
+        aiSummary: summary,
+        ...(transcript ? { transcript } : {}),
 
-      // Legacy fields (kept for compatibility).
-      理由: reason,
-      特記事項: note,
-      送信者: sender,
-      送信日時: Timestamp.fromDate(ts),
-      ステータス: "未対応",
-      要約: summary,
-      緊急度: priority,
-      認識文: transcript,
-      seedTag: SEED_TAG,
-      hospitalId,
-    });
-  });
+        // Legacy fields (kept for compatibility).
+        理由: reason,
+        特記事項: note,
+        送信者: sender,
+        送信日時: Timestamp.fromDate(ts),
+        ステータス: "未対応",
+        要約: summary,
+        緊急度: priority,
+        認識文: transcript,
+        seedTag: SEED_TAG,
+        hospitalId,
+      });
+      seededCount += 1;
+    }
+  }
 
   await batch.commit();
   return NextResponse.json({
     ok: true,
-    seeded: SCENARIOS.length,
+    seeded: seededCount,
     seedTag: SEED_TAG,
     hospitalId,
     collection: collectionName,
-    message: `Seeded ${SCENARIOS.length} demo calls into ${collectionName}. Open /dashboard/nurse to see them.`,
+    message: `Seeded ${seededCount} demo calls into ${collectionName} (day range: -${DAY_RANGE} to +${DAY_RANGE}). Open /dashboard/nurse, /dashboard/family, and /dashboard/history to verify.`,
   });
 }

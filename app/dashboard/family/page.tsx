@@ -12,7 +12,17 @@ import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { getFirebaseStorage, getFirestoreDb } from "@/lib/firebase";
 import { normalizeCallDoc } from "@/lib/calls/schema";
 import { getVideoMessagesCollection } from "@/lib/videoMessages";
-import { Clock, Heart, MessageCircle, RefreshCw, Sparkles, WifiOff, Video } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Heart,
+  MessageCircle,
+  RefreshCw,
+  Sparkles,
+  WifiOff,
+  Video,
+} from "lucide-react";
 import type { CallSummaryItem } from "@/app/api/family-summary/route";
 import { StaffLinks } from "@/components/dashboard/StaffLinks";
 import {
@@ -23,6 +33,7 @@ import {
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { REASON_CHAT, REASON_RESTROOM } from "@/lib/calls/reasons";
 import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
+import { dateLabel } from "@/lib/dashboard/historyUtils";
 
 // ─── 型 ──────────────────────────────────────────────
 
@@ -46,24 +57,20 @@ function toHHMM(ts: Date | null): string {
   );
 }
 
-function todayLabel(): string {
-  const d = new Date();
-  const weekday = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()];
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${d.getFullYear()}/${mm}/${dd} (${weekday})`;
-}
-
-function startOfToday(): Date {
-  const d = new Date();
+function startOfDay(src: Date): Date {
+  const d = new Date(src);
   d.setHours(0, 0, 0, 0);
   return d;
 }
 
-function endOfToday(): Date {
-  const d = new Date();
+function endOfDay(src: Date): Date {
+  const d = new Date(src);
   d.setHours(23, 59, 59, 999);
   return d;
+}
+
+function isToday(src: Date): boolean {
+  return startOfDay(src).getTime() === startOfDay(new Date()).getTime();
 }
 
 // ─── 小コンポーネント ──────────────────────────────────
@@ -117,14 +124,15 @@ export default function FamilyDashboardPage() {
   const [aiMessage, setAiMessage] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const aiAutoRunRef = useRef(false);
+  const aiAutoRunRef = useRef<string | null>(null);
 
   const [videoUploading, setVideoUploading] = useState(false);
   const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
   const [videoUploadOk, setVideoUploadOk] = useState(false);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
-  const dateLabel = todayLabel();
+  const [selectedDate, setSelectedDate] = useState<Date>(() => startOfDay(new Date()));
+  const selectedDateLabel = dateLabel(selectedDate);
 
   const handleVideoFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -174,7 +182,7 @@ export default function FamilyDashboardPage() {
     window.location.href = "/login";
   }, []);
 
-  // ─── Firestore 購読（今日分をクライアントで抽出） ──────────────────────
+  // ─── Firestore 購読（選択日をクライアントで抽出） ──────────────────────
 
   useEffect(() => {
     let db;
@@ -193,8 +201,8 @@ export default function FamilyDashboardPage() {
       q,
       (snap) => {
         try {
-          const start = startOfToday().getTime();
-          const end = endOfToday().getTime();
+          const start = startOfDay(selectedDate).getTime();
+          const end = endOfDay(selectedDate).getTime();
           const docs: CallDoc[] = snap.docs
             .map((d) => normalizeCallDoc(d.id, d.data()))
             .filter((item) => {
@@ -210,6 +218,8 @@ export default function FamilyDashboardPage() {
               ts: item.createdAt,
             }));
           setCalls(docs);
+          setAiMessage(null);
+          setAiError(null);
         } catch (e) {
           console.error("[family] calls map error", e);
           setFirestoreError("Could not display data");
@@ -224,7 +234,7 @@ export default function FamilyDashboardPage() {
     );
 
     return () => unsub();
-  }, []);
+  }, [selectedDate]);
 
   // ─── AI 要約生成 ────────────────────────────────────
 
@@ -233,7 +243,7 @@ export default function FamilyDashboardPage() {
     setAiError(null);
 
     const payload: { date: string; calls: CallSummaryItem[] } = {
-      date: dateLabel,
+      date: selectedDateLabel,
       calls: currentCalls.map((c) => ({
         reasons: c.reasons,
         notes: c.notes,
@@ -266,12 +276,13 @@ export default function FamilyDashboardPage() {
     } finally {
       setAiLoading(false);
     }
-  }, [dateLabel]);
+  }, [selectedDateLabel]);
 
   // データ取得完了後に1回だけ自動生成（AI 失敗してもページ全体は継続）
   useEffect(() => {
-    if (loading || aiAutoRunRef.current) return;
-    aiAutoRunRef.current = true;
+    const runKey = `${selectedDateLabel}:${calls.length}`;
+    if (loading || aiAutoRunRef.current === runKey) return;
+    aiAutoRunRef.current = runKey;
     void (async () => {
       try {
         await generateSummary(calls);
@@ -282,7 +293,7 @@ export default function FamilyDashboardPage() {
         );
       }
     })();
-  }, [loading, calls, generateSummary]);
+  }, [loading, calls, generateSummary, selectedDateLabel]);
 
   // ─── 集計 ───────────────────────────────────────────
 
@@ -306,7 +317,7 @@ export default function FamilyDashboardPage() {
         subtitle={
           <span className="inline-flex items-center gap-1.5">
             <Clock size={13} />
-            {dateLabel} snapshot
+            {selectedDateLabel} snapshot
           </span>
         }
         leftIcon={<span className="text-4xl">💗</span>}
@@ -322,8 +333,36 @@ export default function FamilyDashboardPage() {
       />
 
       <DashboardNavStrip>
-        <div className="mx-auto max-w-5xl">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
           <StaffLinks className="text-xs" />
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setSelectedDate((d) => {
+                const n = new Date(d);
+                n.setDate(n.getDate() - 1);
+                return startOfDay(n);
+              })}
+              className="rounded-lg p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700"
+              aria-label="Previous day"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            <span className="text-[11px] font-semibold text-stone-600">{selectedDateLabel}</span>
+            <button
+              type="button"
+              onClick={() => setSelectedDate((d) => {
+                const n = new Date(d);
+                n.setDate(n.getDate() + 1);
+                return startOfDay(n);
+              })}
+              disabled={isToday(selectedDate)}
+              className="rounded-lg p-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-40"
+              aria-label="Next day"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
         </div>
       </DashboardNavStrip>
 
@@ -434,7 +473,7 @@ export default function FamilyDashboardPage() {
         <AppCard className="border-amber-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-amber-700">
             <MessageCircle size={18} className="text-amber-500" />
-            Today’s calls
+            {isToday(selectedDate) ? "Today’s calls" : "Selected day calls"}
           </h2>
 
           {loading ? (
@@ -467,11 +506,11 @@ export default function FamilyDashboardPage() {
           )}
         </AppCard>
 
-        {/* ─── 今日のタイムライン ─── */}
+        {/* ─── 選択日のタイムライン ─── */}
         <AppCard className="border-stone-200/60 bg-white/80 p-6 backdrop-blur-sm">
           <h2 className="mb-4 flex items-center gap-2 text-base font-bold text-stone-600">
             <Clock size={18} className="text-stone-400" />
-            Today’s timeline
+            {isToday(selectedDate) ? "Today’s timeline" : "Selected day timeline"}
             <StatusBadge tone="neutral" className="ml-auto text-xs font-medium">
               {calls.length} calls
             </StatusBadge>

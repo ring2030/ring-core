@@ -168,8 +168,8 @@ export default function FamilyHistoryPage() {
     const unsub = onSnapshot(q, (snap) => {
       const start = startOf(selectedDate).getTime();
       const end = endOf(selectedDate).getTime();
-      const docs: CallDoc[] = snap.docs
-        .map((d) => normalizeCallDoc(d.id, d.data()))
+      const normalized = snap.docs.map((d) => normalizeCallDoc(d.id, d.data()));
+      const docs: CallDoc[] = normalized
         .filter((item) => {
           const t = item.createdAt.getTime();
           return t >= start && t <= end;
@@ -182,6 +182,19 @@ export default function FamilyHistoryPage() {
           priority: item.priority,
           ts: item.createdAt,
         }));
+
+      // UX guard: if "today" is empty but data exists on other days,
+      // jump to the latest day that has entries so the page is never blank
+      // on first open after seeding.
+      if (docs.length === 0 && isToday(selectedDate) && normalized.length > 0) {
+        const latest = normalized
+          .slice()
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+        if (latest) {
+          setSelectedDate(startOf(latest.createdAt));
+          return;
+        }
+      }
       setCalls(docs);
       setLoading(false);
     }, (err) => {
