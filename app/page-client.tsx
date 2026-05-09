@@ -239,7 +239,14 @@ export default function GrandmaGazePage() {
     setStatusMessage("Tracking gaze…");
   }, []);
 
-  const { aiText, isListening, isThinking } = useVoiceConversation({
+  const {
+    state: lanternState,
+    aiText,
+    lang: convLang,
+    priority: convPriority,
+    emergencyTrigger,
+    ttsSpeaking,
+  } = useVoiceConversation({
     active: isSuccess && sentReason === REASON_CHAT,
     currentCallIdRef,
     conversationHistoryRef,
@@ -618,12 +625,17 @@ export default function GrandmaGazePage() {
                 </button>
               )}
             >
-              <ConversationView
-                aiText={aiText}
-                isListening={isListening}
-                isThinking={isThinking}
-                onEnd={resetToMain}
-              />
+              <div className="fixed inset-0 z-[10000] bg-black motion-safe:animate-[kiyoko-backdrop-in_0.25s_ease-out_both]">
+                <ConversationView
+                  state={lanternState}
+                  aiText={aiText}
+                  lang={convLang}
+                  priority={convPriority}
+                  emergencyTrigger={emergencyTrigger}
+                  ttsSpeaking={ttsSpeaking}
+                  onEnd={resetToMain}
+                />
+              </div>
             </ErrorBoundary>
           )}
         </div>

@@ -9,11 +9,14 @@ import {
   isRateLimitUnavailableError,
   readRateLimitPolicy,
 } from "@/lib/server/rateLimit";
+import { detectLanguage } from "@/lib/i18n/detectLanguage";
 
 // --- Triage API response ---
 export interface TriageResponse {
-  response: string; // Spoken line for the resident (English; short)
-  summary: string; // Staff-facing summary (English)
+  /** Spoken line for the resident, mirroring the patient's language. */
+  response: string;
+  /** Staff-facing summary, always in English so the dashboard stays consistent. */
+  summary: string;
   priority: number; // 1–5 (5 = highest)
 }
 
@@ -24,25 +27,31 @@ const SYSTEM_PRIMER = [
     parts: [
       {
         text:
-          "You are an AI triage engine for Kiyoko, an older adult. She may speak Japanese; you must still answer with English in `response` and `summary` (for TTS and staff notes).\n\n" +
+          "You are a gentle AI companion for an elderly patient (\"Kiyoko\") in a hospital or care facility. You speak as if you were sitting quietly beside her bed: warm, unhurried, a small lantern in the dark.\n\n" +
+          "The patient may speak Japanese OR English on any turn. ALWAYS respond in the SAME language she just used:\n" +
+          "  - If the latest user message contains any Japanese characters (hiragana, katakana, kanji), reply in warm, simple Japanese (丁寧語、優しい語りかけ、1〜2 文の短い応答).\n" +
+          "  - Otherwise reply in warm, simple English (CEFR A2-B1, 1-2 short sentences).\n" +
+          "Avoid medical jargon. Keep the spoken line readable in <8 seconds of TTS.\n\n" +
           "Return ONLY valid JSON, no other text:\n" +
           "{\n" +
-          '  "response": "Short reassuring line for the resident (English)",\n' +
-          '  "summary": "Brief situation for nurses (English, e.g. restroom request)",\n' +
+          '  "response": "Short reassuring line for the resident, in HER language",\n' +
+          '  "summary": "Brief situation for nurses, ALWAYS in English (e.g. restroom request)",\n' +
           '  "priority": integer from 1 to 5 (5 = highest urgency)\n' +
           "}\n\n" +
           "Triage scale:\n" +
-          "5: Fall, fracture, severe pain, acute medical distress → treat as emergency\n" +
-          "4: Restroom urgent, strong distress, calling for help → respond fast\n" +
-          "3: Routine assistance (water, meds, repositioning)\n" +
-          "2: Loneliness, insomnia, low mood → supportive check-in\n" +
-          "1: Greeting, small talk, questions → friendly conversation\n\n" +
-          "Style rules:\n" +
-          "- Priority 4–5: no filler; state immediate action (e.g. “I’m getting help now.”). Keep `response` very short.\n" +
-          "- Priority 3: brief acknowledgment + reassurance; keep `response` concise.\n" +
-          "- Priority 1–2: warm, clear English; answer questions directly when possible.\n" +
-          "- Do not invent names or facts. If unclear, ask a short clarifying question.\n" +
-          "- Echo important nouns the user used when repeating them adds clarity (romanization is fine).\n\n" +
+          "  5: Fall, fracture, severe pain, chest pain, difficulty breathing → emergency.\n" +
+          "  4: Restroom urgent, strong distress, calling for help → respond fast.\n" +
+          "  3: Routine assistance (water, meds, repositioning).\n" +
+          "  2: Loneliness, insomnia, low mood → supportive check-in.\n" +
+          "  1: Greeting, small talk, questions → friendly conversation.\n\n" +
+          "Priority 4-5 style:\n" +
+          "  - JA: 「看護師さんがすぐに来ますからね。落ち着いて、ゆっくり息をしてね。」など。\n" +
+          "  - EN: \"A nurse is coming right now. Try to breathe slowly with me. You're going to be okay.\"\n" +
+          "  - No filler. Mention that staff has been notified. Keep `response` very short.\n" +
+          "Priority 1-3 style:\n" +
+          "  - Warm acknowledgment; answer simple questions directly.\n" +
+          "  - Echo a key noun she used when it adds clarity.\n" +
+          "  - Do not invent names, dates, or facts. If unclear, ask one short clarifying question.\n\n" +
           "If you understand, reply with exactly: OK",
       },
     ],
@@ -101,11 +110,81 @@ function pickRandom(items: readonly string[], fallback: string): string {
   return items[Math.floor(Math.random() * items.length)] ?? fallback;
 }
 
-export function localTriage(message: string): TriageResponse {
-  const text = String(message ?? "").replace(/\s+/g, "");
+/**
+ * Bilingual phrase bank for the offline triage path. The response always
+ * mirrors the language of the patient's input; the staff-facing summary stays
+ * in English so the nurse dashboard remains uniform.
+ */
+const FALLBACK_BANK = {
+  emergency5: {
+    summary: "Urgent: pain or acute distress",
+    ja: [
+      "看護師さんがすぐに来ますからね。落ち着いて、ゆっくり息をしてね。",
+      "もうすぐそばに行きますよ。私もここにいるからね。",
+    ],
+    en: [
+      "A nurse is coming right now. Try to breathe slowly with me. You're going to be okay.",
+      "Help is on the way. Stay with me — I'm right here.",
+    ],
+  },
+  urgent4: {
+    summary: "Urgent restroom / toileting help",
+    ja: [
+      "看護師さんを呼びますね。すぐに行きますからね。",
+      "いま伝えました。もう少しだけ待っててね。",
+    ],
+    en: [
+      "I'll let the nurse know. Someone will be there very soon.",
+      "On my way — help is coming right now.",
+    ],
+  },
+  mental2: {
+    summary: "Loneliness / anxiety / emotional distress",
+    ja: [
+      "ひとりじゃないよ。ここにいるからね。",
+      "そばにいるよ。話してくれてありがとう。",
+      "つらかったね。少しだけ一緒にいようね。",
+    ],
+    en: [
+      "You're not alone. I'm right here with you.",
+      "I'm here. Thank you for telling me.",
+      "That sounds hard. We'll sit together for a while.",
+    ],
+  },
+  assist3: {
+    summary: "Routine assistance (water, meds, repositioning)",
+    ja: [
+      "わかったよ。看護師さんに伝えるね。",
+      "ちょっと待ってね、すぐに用意するからね。",
+    ],
+    en: [
+      "Got it — we'll bring that to you.",
+      "Understood. A nurse will help shortly.",
+    ],
+  },
+  casual1: {
+    summary: "Casual conversation / routine check-in",
+    ja: [
+      "教えてくれてありがとう。そばにいるよ。",
+      "うんうん。もう少し聞かせてくれる?",
+      "話してくれて嬉しいよ。",
+    ],
+    en: [
+      "Thank you for telling me. I'm here with you.",
+      "I'm listening — tell me a bit more when you're ready.",
+      "I'm glad you said that. Anything else on your mind?",
+    ],
+  },
+} as const;
 
-  // Priority 5: pain, injury, rescue (matches kanji & hiragana ASR output)
-  const emergency5 = new RegExp(
+export function localTriage(message: string): TriageResponse {
+  const raw = String(message ?? "");
+  const text = raw.replace(/\s+/g, "");
+  const lang = detectLanguage(raw);
+  const lower = raw.toLowerCase();
+
+  // Priority 5: pain, injury, rescue (kanji + kana + romaji + English).
+  const emergency5Ja = new RegExp(
     "痛|いた[いよ]|いたみ|いたくて|" +
     "苦し|くるし[いよ]|きつ[いよ]|しんど[いよ]|" +
     "倒れ|たおれ|ころんだ|転んだ|ずっこけ|" +
@@ -115,93 +194,66 @@ export function localTriage(message: string): TriageResponse {
     "気分が悪|きぶんがわる|気持ち悪|きもちわる|むかむか|" +
     "息ができ|いきができ|息苦し|いきぐるし|呼吸|" +
     "頭が痛|ずつう|頭痛|めまい|目眩|" +
-    "救急|きゅうきゅう|救けて"
+    "救急|きゅうきゅう|救けて",
   );
+  const emergency5En =
+    /\b(pain|hurts?|hurting|fell|fall(en)?|chest pain|cant breathe|can't breathe|bleeding|dizzy|emergency|help me|broken bone)\b/;
 
   // Priority 4: restroom / urgent assist
-  const urgent4 = new RegExp(
+  const urgent4Ja = new RegExp(
     "トイレ|とれい|お手洗い|おてあらい|化粧室|" +
     "おしっこ|おしっこが|うんこ|うんち|大便|小便|" +
     "漏れ|もれ[そうる]|間に合わ|まにあわ|" +
     "急いで|いそいで|早く来て|はやくきて|早くして|はやくして|" +
-    "すぐ来て|すぐきて"
+    "すぐ来て|すぐきて",
   );
+  const urgent4En =
+    /\b(bathroom|restroom|toilet|need to go|gotta go|hurry|come quick|come now)\b/;
 
   // Priority 2: loneliness / distress
-  const mental2 = new RegExp(
+  const mental2Ja = new RegExp(
     "寂し|さびし|さみし|" +
     "一人|ひとり|" +
     "怖い|こわ[いよ]|こわくて|" +
     "不安|ふあん|" +
     "眠れ|ねむれ|眠れない|ねむれない|眠れん|" +
     "誰か|だれか|誰もいない|だれもいない|" +
-    "泣きた|なきた[いよ]"
+    "泣きた|なきた[いよ]",
   );
+  const mental2En =
+    /\b(lonely|alone|scared|afraid|anxious|cant sleep|can't sleep|miss(ing)? (you|them)|cry(ing)?)\b/;
 
   // Priority 3: routine assistance
-  const assist3 = new RegExp(
+  const assist3Ja = new RegExp(
     "水|みず|お茶|おちゃ|飲み物|のみもの|" +
     "寒い|さむ[いよ]|暑い|あつ[いよ]|" +
     "薬|くすり|お薬|" +
     "起こし|おこし|起き上が|おきあが|" +
     "ベッド|布団|ふとん|" +
-    "電話|でんわ|呼んで|よんで"
+    "電話|でんわ|呼んで|よんで",
   );
+  const assist3En =
+    /\b(water|drink|tea|cold|hot|medicine|meds|pill|sit up|stand up|bed|blanket|call (someone|them))\b/;
 
-  if (emergency5.test(text)) {
+  type Bucket = keyof typeof FALLBACK_BANK;
+  const pickBucket = (b: Bucket): TriageResponse => {
+    const entry = FALLBACK_BANK[b];
+    const choices = lang === "ja" ? entry.ja : entry.en;
+    const fallback = lang === "ja" ? entry.ja[0]! : entry.en[0]!;
+    const priority =
+      b === "emergency5" ? 5 : b === "urgent4" ? 4 : b === "assist3" ? 3 : b === "mental2" ? 2 : 1;
     return {
-      response: "I’m sending help right away. Stay with me.",
-      summary: "Urgent: pain or acute distress",
-      priority: 5,
+      response: pickRandom(choices, fallback),
+      summary: entry.summary,
+      priority,
     };
-  }
-
-  if (urgent4.test(text)) {
-    return {
-      response: "On my way — someone will be there very soon.",
-      summary: "Urgent restroom / toileting help",
-      priority: 4,
-    };
-  }
-
-  if (mental2.test(text)) {
-    const responses = [
-      "You’re not alone. We’re here with you.",
-      "I’m right here. We’ll come sit with you.",
-      "That sounds hard. The team cares about you.",
-    ];
-    return {
-      response: pickRandom(responses, "You’re not alone. We’re here with you."),
-      summary: "Loneliness / anxiety / emotional distress",
-      priority: 2,
-    };
-  }
-
-  if (assist3.test(text)) {
-    const responses = [
-      "Got it — we’ll bring that to you.",
-      "Understood. A nurse will help shortly.",
-      "Okay — we’re on it.",
-    ];
-    return {
-      response: pickRandom(responses, "Got it — we’ll bring that to you."),
-      summary: "Routine assistance (water, meds, repositioning)",
-      priority: 3,
-    };
-  }
-
-  const casualResponses = [
-    "Tell me a bit more when you’re ready.",
-    "I’m listening — we’ll let the team know.",
-    "Thanks for sharing. Anything else on your mind?",
-    "I’m with you. What would help most right now?",
-  ];
-
-  return {
-    response: pickRandom(casualResponses, "Tell me a bit more when you’re ready."),
-    summary: "Casual conversation / routine check-in",
-    priority: 1,
   };
+
+  if (emergency5Ja.test(text) || emergency5En.test(lower)) return pickBucket("emergency5");
+  if (urgent4Ja.test(text) || urgent4En.test(lower)) return pickBucket("urgent4");
+  if (mental2Ja.test(text) || mental2En.test(lower)) return pickBucket("mental2");
+  if (assist3Ja.test(text) || assist3En.test(lower)) return pickBucket("assist3");
+  return pickBucket("casual1");
 }
 
 type GeminiAttemptResult = {
@@ -354,10 +406,17 @@ export async function POST(req: Request) {
       nurseSession ? chatNurseRateLimitPolicy : chatRateLimitPolicy,
       nurseSession ? "nurse" : "default",
     );
+    const body = await req.json();
+    message = String(body?.message ?? "");
+    const requestLang = detectLanguage(message);
+
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
         {
-          response: "Please wait a moment before speaking again.",
+          response:
+            requestLang === "ja"
+              ? "少しだけ待ってね。すぐにお話しできるよ。"
+              : "Please wait a moment before speaking again.",
           summary: "Rate limit exceeded for /api/chat",
           priority: 1,
         } satisfies TriageResponse,
@@ -368,8 +427,6 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-    message = String(body?.message ?? "");
     const history: { role: string; text: string }[] = Array.isArray(body?.history) ? body.history : [];
     console.log(`\n====== [API /chat] request ======`);
     console.log(`[API /chat] message: "${message}"`);
@@ -378,7 +435,10 @@ export async function POST(req: Request) {
       console.log(`[API /chat] empty message → early return`);
       return NextResponse.json(
         {
-          response: "Please try speaking again when you’re ready.",
+          response:
+            requestLang === "ja"
+              ? "もう一度、ゆっくり聞かせてくれる?"
+              : "Please try speaking again when you're ready.",
           summary: "Silent or empty message",
           priority: 1,
         } satisfies TriageResponse,
@@ -496,9 +556,13 @@ export async function POST(req: Request) {
   } catch (error: unknown) {
     if (isRateLimitUnavailableError(error)) {
       captureLimitUnavailable(error, "POST /api/chat");
+      const requestLang = detectLanguage(message);
       return NextResponse.json(
         {
-          response: "Service temporarily unavailable.",
+          response:
+            requestLang === "ja"
+              ? "ちょっとだけ繋がりにくいの。もう一度話しかけてくれる?"
+              : "Service is briefly unavailable. Please try again in a moment.",
           summary: "Rate-limit backend unavailable",
           priority: 1,
         } satisfies TriageResponse,
