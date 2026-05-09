@@ -10,7 +10,7 @@ type LoginStateStore = {
   users: Record<string, LoginState>;
 };
 
-const STORE_DIR = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+const STORE_DIR = process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]
   ? "/tmp/.ring-data"
   : path.join(process.cwd(), ".data");
 const STORE_FILE = path.join(STORE_DIR, "nurse-login-state.json");

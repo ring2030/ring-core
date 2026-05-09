@@ -1,0 +1,79 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  23:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\components\kiyoko\VoiceTriageModal.tsx
+  83:9  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\user\Desktop\ring-core\hooks\useIrisGaze.ts
+  225:13  warning  'resultReady' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 5 problems (0 errors, 5 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:08:06
+   Duration  1.50s (transform 368ms, setup 0ms, import 642ms, tests 44ms, environment 9.43s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.0s
+  Running TypeScript ...
+Failed to type check.
+
+./app/dashboard/nurse/page.tsx:249:7
+Type error: Object is possibly 'undefined'.
+
+  [90m247 |[0m     calls.forEach((c) => {
+  [90m248 |[0m       [36mconst[0m key = counts[c.reason] !== [36mundefined[0m ? c.reason : [32m"Other"[0m;
+[31m[1m>[0m [90m249 |[0m       counts[key]++;
+  [90m    |[0m       [31m[1m^[0m
+  [90m250 |[0m       hourly[c.date.getHours()].count++;
+  [90m251 |[0m     });
+  [90m252 |[0m     [36mreturn[0m {
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 16202ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-07-58-909Z.log

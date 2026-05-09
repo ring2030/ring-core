@@ -86,22 +86,22 @@ function normalizeSenderDisplay(name: string): string {
 }
 
 export function normalizeCallDoc(id: string, raw: DocumentData): CallRecord {
-  const rawReasons = parseReasons(raw.reasonCodes ?? raw.理由);
+  const rawReasons = parseReasons(raw["reasonCodes"] ?? raw["理由"]);
   const reasons =
     rawReasons.length > 0 ? normalizeReasonList(rawReasons) : ["Unknown"];
-  const note = String(raw.note ?? raw.特記事項 ?? "");
+  const note = String(raw["note"] ?? raw["特記事項"] ?? "");
   const senderName = normalizeSenderDisplay(
-    String(raw.senderName ?? raw.送信者 ?? "Unknown"),
+    String(raw["senderName"] ?? raw["送信者"] ?? "Unknown"),
   );
-  const senderRole = String(raw.senderRole ?? "patient") as SenderRole;
+  const senderRole = String(raw["senderRole"] ?? "patient") as SenderRole;
   const createdAt =
-    toTimestampDate(raw.createdAt) ??
-    toTimestampDate(raw.送信日時) ??
-    toTimestampDate(raw.時間) ??
+    toTimestampDate(raw["createdAt"]) ??
+    toTimestampDate(raw["送信日時"]) ??
+    toTimestampDate(raw["時間"]) ??
     new Date();
-  const priorityValue = Number(raw.priority ?? raw.緊急度 ?? 1);
+  const priorityValue = Number(raw["priority"] ?? raw["緊急度"] ?? 1);
   const priority = Number.isFinite(priorityValue) ? priorityValue : 1;
-  const aiSummary = String(raw.aiSummary ?? raw.要約 ?? "");
+  const aiSummary = String(raw["aiSummary"] ?? raw["要約"] ?? "");
 
   return {
     id,

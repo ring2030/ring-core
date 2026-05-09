@@ -12,7 +12,7 @@ function normalizeHospitalId(value: string): string {
 }
 
 export function resolveHospitalIdForNurse(nurseId: string): string {
-  const envRaw = process.env.NURSE_HOSPITAL_MAP?.trim();
+  const envRaw = process.env["NURSE_HOSPITAL_MAP"]?.trim();
   if (envRaw) {
     try {
       const parsed = JSON.parse(envRaw) as NurseHospitalMap;
@@ -31,7 +31,7 @@ export function resolveHospitalIdForNurse(nurseId: string): string {
 
 export function resolveHospitalIdsForNurseFromStaticMap(nurseId: string): string[] {
   const single = resolveHospitalIdForNurse(nurseId);
-  const envRaw = process.env.NURSE_HOSPITALS_MAP?.trim();
+  const envRaw = process.env["NURSE_HOSPITALS_MAP"]?.trim();
   if (!envRaw) return [single];
   try {
     const parsed = JSON.parse(envRaw) as Record<string, string[]>;

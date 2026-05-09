@@ -29,14 +29,14 @@ export async function GET(req: NextRequest) {
   cookieStore.set(getSessionCookieName(), sessionToken, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env["NODE_ENV"] === "production",
     path: "/",
     maxAge: 60 * 60 * 8,
   });
   cookieStore.set(HOSPITAL_COOKIE_NAME, invite.hospitalId ?? DEFAULT_HOSPITAL_ID, {
     httpOnly: false,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env["NODE_ENV"] === "production",
     path: "/",
     maxAge: 60 * 60 * 8,
   });

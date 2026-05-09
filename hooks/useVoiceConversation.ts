@@ -223,7 +223,9 @@ export function useVoiceConversation({
           speakAndFinish("Let’s talk again soon.");
         }, 15_000);
 
-        const segment = String(event.results[0][0].transcript ?? "").trim();
+        const firstResult = event.results[0];
+        const firstAlt = firstResult?.[0];
+        const segment = String(firstAlt?.transcript ?? "").trim();
         if (!segment) return;
 
         speechBuffer = speechBuffer ? `${speechBuffer} ${segment}` : segment;

@@ -53,7 +53,7 @@ function pickTemplate(): Template {
     const w = WEIGHT_MAP[t.priority] ?? 10;
     for (let i = 0; i < w; i++) pool.push(t);
   });
-  return pool[Math.floor(Math.random() * pool.length)];
+  return pool[Math.floor(Math.random() * pool.length)] ?? TEMPLATES[0]!;
 }
 
 /** Random timestamp over the last 7 days, biased toward daytime hours. */
@@ -71,7 +71,7 @@ function randomTimestamp(daysAgo: number): Timestamp {
   let rand = Math.random() * total;
   let hour = 0;
   for (let i = 0; i < 24; i++) {
-    rand -= hourWeights[i];
+    rand -= hourWeights[i] ?? 0;
     if (rand <= 0) {
       hour = i;
       break;

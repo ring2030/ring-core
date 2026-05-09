@@ -12,7 +12,7 @@ type DemoFeedback = {
 };
 
 const STORE_DIR =
-  process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+  process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]
     ? "/tmp/.ring-data"
     : path.join(process.cwd(), ".data");
 const STORE_FILE = path.join(STORE_DIR, "demo-feedback.jsonl");
@@ -155,10 +155,10 @@ export async function POST(req: Request) {
       impactScore: clampScore(body.impactScore),
       trustScore: clampScore(body.trustScore),
       adoptionIntent,
-      comment: typeof body.comment === "string" ? body.comment.slice(0, 300) : undefined,
-      watchedSeconds: Number.isFinite(Number(body.watchedSeconds))
-        ? Math.max(0, Math.min(120, Number(body.watchedSeconds)))
-        : undefined,
+      ...(typeof body.comment === "string" ? { comment: body.comment.slice(0, 300) } : {}),
+      ...(Number.isFinite(Number(body.watchedSeconds))
+        ? { watchedSeconds: Math.max(0, Math.min(120, Number(body.watchedSeconds))) }
+        : {}),
     };
 
     await fs.mkdir(STORE_DIR, { recursive: true });

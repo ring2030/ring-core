@@ -1,0 +1,79 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  23:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\components\kiyoko\VoiceTriageModal.tsx
+  83:9  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\user\Desktop\ring-core\hooks\useIrisGaze.ts
+  225:13  warning  'resultReady' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 5 problems (0 errors, 5 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:10:51
+   Duration  1.50s (transform 442ms, setup 0ms, import 738ms, tests 45ms, environment 9.42s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.3s
+  Running TypeScript ...
+Failed to type check.
+
+./hooks/useIrisGaze.ts:44:54
+Type error: Property 'FaceDetection' comes from an index signature, so it must be accessed with ['FaceDetection'].
+
+  [90m42 |[0m [90m/** Load @mediapipe/face_detection script from self-hosted WASM files */[0m
+  [90m43 |[0m [36mfunction[0m loadFaceDetectionScript(): [33mPromise[0m<[36mvoid[0m> {
+[31m[1m>[0m [90m44 |[0m   [36mif[0m ((window [36mas[0m unknown [36mas[0m [33mRecord[0m<string, unknown>).[33mFaceDetection[0m) [36mreturn[0m [33mPromise[0m.resolve();
+  [90m   |[0m                                                      [31m[1m^[0m
+  [90m45 |[0m   [36mreturn[0m [36mnew[0m [33mPromise[0m<[36mvoid[0m>((resolve, reject) => {
+  [90m46 |[0m     [36mconst[0m existing = document.querySelector([32m'script[src*="face_detection.js"]'[0m);
+  [90m47 |[0m     [36mif[0m (existing) {
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 17033ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-10-43-739Z.log

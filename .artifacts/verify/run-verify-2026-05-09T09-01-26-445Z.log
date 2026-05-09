@@ -1,0 +1,79 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  23:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\components\kiyoko\VoiceTriageModal.tsx
+  83:9  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\user\Desktop\ring-core\hooks\useIrisGaze.ts
+  225:13  warning  'resultReady' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 5 problems (0 errors, 5 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:01:33
+   Duration  1.59s (transform 340ms, setup 0ms, import 643ms, tests 52ms, environment 10.11s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.0s
+  Running TypeScript ...
+Failed to type check.
+
+./app/api/demo-feedback/route.ts:15:15
+Type error: Property 'VERCEL' comes from an index signature, so it must be accessed with ['VERCEL'].
+
+  [90m13 |[0m
+  [90m14 |[0m [36mconst[0m [33mSTORE_DIR[0m =
+[31m[1m>[0m [90m15 |[0m   process.env.[33mVERCEL[0m || process.env.[33mAWS_LAMBDA_FUNCTION_NAME[0m
+  [90m   |[0m               [31m[1m^[0m
+  [90m16 |[0m     ? [32m"/tmp/.ring-data"[0m
+  [90m17 |[0m     : path.join(process.cwd(), [32m".data"[0m);
+  [90m18 |[0m [36mconst[0m [33mSTORE_FILE[0m = path.join([33mSTORE_DIR[0m, [32m"demo-feedback.jsonl"[0m);
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 16616ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-01-26-445Z.log

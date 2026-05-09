@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Props = {
@@ -20,18 +20,15 @@ export function LoginClient({ nextPath, initialErrorCode }: Props) {
   const [newPassword, setNewPassword] = useState("");
   const [resetPending, setResetPending] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
-  const [titleTapCount, setTitleTapCount] = useState(0);
+  const titleTapCountRef = useRef(0);
   const [showShoheiEasterEgg, setShowShoheiEasterEgg] = useState(false);
 
   function onNurseTitleClick() {
-    setTitleTapCount((count) => {
-      const next = count + 1;
-      if (next >= 3) {
-        setShowShoheiEasterEgg((visible) => !visible);
-        return 0;
-      }
-      return next;
-    });
+    titleTapCountRef.current += 1;
+    if (titleTapCountRef.current >= 3) {
+      setShowShoheiEasterEgg((visible) => !visible);
+      titleTapCountRef.current = 0;
+    }
   }
 
   async function handleNurseLogin(e: FormEvent<HTMLFormElement>) {

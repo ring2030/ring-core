@@ -24,12 +24,12 @@ The patient home defaults to an **in-browser MediaPipe iris pipeline** (TensorFl
 
 ## AI
 
-No Google SDK is bundled. Both Route Handlers call the **Gemini REST API** directly via `fetch` (server-side only), keeping the dependency surface and bundle size minimal.
+Gemini access is server-side only. **`/api/chat` uses REST (`fetch`)**, while **`/api/family-summary` uses `@google/genai`**.
 
 | Surface | Endpoint | Notes |
 |---------|----------|-------|
-| Triage | `POST /api/chat` → Gemini `:generateContent` | Structured JSON reply for the voice/AI flow |
-| Family summary | `POST /api/family-summary` → Gemini `:generateContent` | Server-side summary from posted call data |
+| Triage | `POST /api/chat` | Structured JSON reply for the voice/AI flow (REST via `fetch`) |
+| Family summary | `POST /api/family-summary` | Uses `@google/genai` (`GoogleGenAI.models.generateContent`) |
 
 **Base URL:** `https://generativelanguage.googleapis.com/v1beta` (override with `GEMINI_API_BASE`).
 
@@ -96,7 +96,7 @@ npm run run:auto      # Watch mode: reruns quality on file changes
 | `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Yes | Firebase client config |
 | `NEXT_PUBLIC_FIREBASE_APP_ID` | Yes | Firebase client config |
 | `GEMINI_API_KEY` | Yes (for AI) | Server-side Gemini API key |
-| `GEMINI_API_BASE` | No | Override Gemini base URL |
+| `GEMINI_API_BASE` | No | Override Gemini base URL (used by chat route) |
 | `GEMINI_MODEL` | No | Override model (default: `gemini-2.5-flash`) |
 | `NEXT_PUBLIC_VIDEO_MESSAGES_COLLECTION` | No | Firestore collection for family videos (default: `messages`) |
 

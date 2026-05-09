@@ -41,7 +41,7 @@ type MPDetection = {
 
 /** Load @mediapipe/face_detection script from self-hosted WASM files */
 function loadFaceDetectionScript(): Promise<void> {
-  if ((window as unknown as Record<string, unknown>).FaceDetection) return Promise.resolve();
+  if ((window as unknown as Record<string, unknown>)["FaceDetection"]) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     const existing = document.querySelector('script[src*="face_detection.js"]');
     if (existing) {
@@ -222,7 +222,6 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         // Store latest results from callback
         let latestDetection: MPDetection | null = null;
-        let resultReady = false;
 
         detector.setOptions({
           model: "short",
@@ -232,7 +231,6 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
 
         detector.onResults((results: { detections: MPDetection[] }) => {
           latestDetection = results.detections?.[0] ?? null;
-          resultReady = true;
         });
 
         setInitStatus("Initializing model…");
@@ -317,7 +315,6 @@ export function useIrisGaze(options: UseIrisGazeOptions) {
           }
 
           sendingRef.current = true;
-          resultReady = false;
           setFrameCount((n) => n + 1);
 
           (det.send({ image: vid }) as Promise<void>)

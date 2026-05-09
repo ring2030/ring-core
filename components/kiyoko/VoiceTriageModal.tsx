@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
@@ -54,7 +55,7 @@ type HeroMode = "listening" | "speaking" | "reassurance";
 type CompanionTone = "calm" | "supportive" | "urgent";
 
 function FamilyFaceHero({ mode, tone }: { mode: HeroMode; tone: CompanionTone }) {
-  const familyPhotoUrl = process.env.NEXT_PUBLIC_FAMILY_PHOTO_URL?.trim();
+  const familyPhotoUrl = process.env["NEXT_PUBLIC_FAMILY_PHOTO_URL"]?.trim();
   const isSpeaking = mode === "speaking";
   const isListening = mode === "listening";
   const isReassurance = mode === "reassurance";
@@ -80,9 +81,11 @@ function FamilyFaceHero({ mode, tone }: { mode: HeroMode; tone: CompanionTone })
       }}
     >
       {familyPhotoUrl && (
-        <img
+        <Image
           src={familyPhotoUrl}
           alt="Family photo"
+          fill
+          sizes="(max-width: 768px) 72vmin, 420px"
           className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
             isReassurance ? "opacity-85" : "opacity-65"
           }`}
@@ -164,7 +167,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
 
   const inferCompanionTone = useCallback((transcript: string, urgency: "high" | "low"): CompanionTone => {
     if (urgency === "high") return "urgent";
-    if (/lonely|anxious|scared|寂|不安|こわ/i.test(transcript)) return "supportive";
+    if (/lonely|anxious|scared|寁E不安|こわ/i.test(transcript)) return "supportive";
     return "calm";
   }, []);
 
@@ -244,6 +247,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
       let interim = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const row = event.results[i];
+        if (!row) continue;
         const piece = row[0]?.transcript ?? "";
         if (row.isFinal) {
           finalBufferRef.current = `${finalBufferRef.current}${piece}`;
@@ -377,7 +381,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
               {REASSURANCE}
             </p>
             <p className="text-sm text-slate-400">
-              Reading aloud — check your volume
+              Reading aloud  Echeck your volume
             </p>
             <button
               type="button"
@@ -451,7 +455,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
                 Mic on · listening
               </p>
               <p className="mt-2 text-base text-amber-100/90">
-                “Pain”, “fell”, “help” → urgent · “Lonely”, “call someone” → lower urgency
+                “Pain E “fell E “help EↁEurgent · “Lonely E “call someone EↁElower urgency
               </p>
               <div
                 className="mt-6 min-h-[4.5rem] rounded-2xl border border-white/20 bg-black/30 px-4 py-3 text-left text-lg leading-relaxed text-white"
@@ -470,7 +474,7 @@ export function VoiceTriageModal({ open, onClose }: VoiceTriageModalProps) {
                 onClick={handleTapToFinish}
                 className="mt-6 w-full max-w-md rounded-2xl border-2 border-amber-300/80 bg-amber-500/20 py-4 text-lg font-bold text-amber-100 hover:bg-amber-500/30"
               >
-                Done — send this
+                Done  Esend this
               </button>
             </div>
           </>

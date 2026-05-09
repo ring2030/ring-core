@@ -74,7 +74,7 @@ export default function GrandmaGazePage() {
     const mode = getStoredInputMode();
     const engine = getStoredGazeEngine();
     // dev_ keys are localhost-only; on any other host (e.g. Vercel) force iris
-    const eyedidKey = process.env.NEXT_PUBLIC_EYEDID_LICENSE_KEY ?? "";
+    const eyedidKey = process.env["NEXT_PUBLIC_EYEDID_LICENSE_KEY"] ?? "";
     const eyedidUsable = eyedidKey.length > 0 && !eyedidKey.startsWith("dev_");
     const useIris = engine !== "eyedid" || !eyedidUsable;
     setInputMode(mode);
@@ -327,7 +327,7 @@ export default function GrandmaGazePage() {
   } = useIrisGaze({
     enabled: irisEnabled,
     restartKey: irisRestartKey,
-    cameraDeviceId: irisCameraDeviceId,
+    ...(irisCameraDeviceId !== undefined ? { cameraDeviceId: irisCameraDeviceId } : {}),
     onLeftSelect: () => {
       if (hasSubmittedRef.current) return;
       hasSubmittedRef.current = true;

@@ -96,14 +96,14 @@ export async function POST(req: Request) {
     cookieStore.set(getSessionCookieName(), token, {
       httpOnly: true,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env["NODE_ENV"] === "production",
       path: "/",
       maxAge: 60 * 60 * 12,
     });
     cookieStore.set(HOSPITAL_COOKIE_NAME, hospitalId, {
       httpOnly: false,
       sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
+      secure: process.env["NODE_ENV"] === "production",
       path: "/",
       maxAge: 60 * 60 * 12,
     });

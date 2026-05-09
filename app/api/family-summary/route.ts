@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
+import { GoogleGenAI } from "@google/genai";
 
 export interface CallSummaryItem {
   reasons: string[];
   notes: string;
   sender: string;
-  time: string; // "HH:mm" 形式
+  time: string; // "HH:mm" ??E
 }
 
 export interface FamilySummaryRequest {
-  date: string; // "YYYY/MM/DD（曜日）"
+  date: string; // "YYYY/MM/DD?E????E?E
   calls: CallSummaryItem[];
 }
 
@@ -18,14 +19,14 @@ function toErrorMessage(error: unknown): string {
   return String(error);
 }
 
-// Gemini に渡すプロンプトを組み立てる
+// Gemini ????E??????E?????E
 export function buildPrompt(req: FamilySummaryRequest): string {
   const { date, calls } = req;
 
   if (calls.length === 0) {
     return (
       `On ${date}, Kiyoko had 0 calls logged. ` +
-      "As a warm AI companion speaking to her family, write 3–5 short reassuring sentences in English. " +
+      "As a warm AI companion speaking to her family, write 3-4 short reassuring sentences in English. " +
       "Even with no calls, interpret the day positively (restful, calm, etc.)."
     );
   }
@@ -37,26 +38,26 @@ export function buildPrompt(req: FamilySummaryRequest): string {
     }
   }
   const countStr = Object.entries(countByReason)
-    .map(([k, v]) => `"${k}" ×${v}`)
+    .map(([k, v]) => `"${k}" x${v}`)
     .join(", ");
 
   const timeline = calls
-    .map((c) => `  ${c.time} — ${c.reasons.join(" · ")}${c.notes ? ` (${c.notes})` : ""}`)
+    .map((c) => `  ${c.time} \u2014 ${c.reasons.join(" / ")}${c.notes ? ` (${c.notes})` : ""}`)
     .join("\n");
 
   return (
-    `Here is Kiyoko’s call log for ${date}.\n\n` +
+    `Here is Kiyoko's call log for ${date}.\n\n` +
     `Total calls: ${calls.length}\n` +
     `By reason: ${countStr}\n` +
     `Timeline:\n${timeline}\n\n` +
     "Write a warm, reassuring message in English for her family (granddaughter tone).\n" +
     "Rules:\n" +
-    "1. Start in a conversational way (e.g. “Today, grandma…”).\n" +
+    "1. Start in a conversational way (e.g. \"Today, grandma...\").\n" +
     "2. Mention patterns (time of day, common reasons) naturally.\n" +
     "3. End with one gentle suggestion for the family (e.g. call her).\n" +
-    "4. Keep it 3–5 sentences, under ~500 characters.\n" +
-    "5. Use at most 2–3 emojis; stay positive and kind.\n" +
-    "Output only the message — no headings or bullets."
+    "4. Keep it 3-4 sentences, under ~500 characters.\n" +
+    "5. Use at most 2-3 emojis; stay positive and kind.\n" +
+    "Output only the message - no headings or bullets."
   );
 }
 
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
   try {
     const body: FamilySummaryRequest = await req.json();
 
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env["GEMINI_API_KEY"];
     if (!apiKey) {
       return NextResponse.json(
         { error: "GEMINI_API_KEY is not set" },
@@ -72,45 +73,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const apiBase =
-      process.env.GEMINI_API_BASE?.replace(/\/$/, "") ??
-      "https://generativelanguage.googleapis.com/v1beta";
-
-    // 家族向け要約は gemini-1.5-flash を使用（env で上書き可能）
-    const model = process.env.GEMINI_FAMILY_MODEL ?? "gemini-1.5-flash";
+    // Family summary model can be overridden via env.
+    const model = process.env["GEMINI_FAMILY_MODEL"] ?? "gemini-1.5-flash";
 
     const prompt = buildPrompt(body);
-
-    const res = await fetch(
-      `${apiBase}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          generationConfig: {
-            maxOutputTokens: 300,
-            temperature: 0.85,
-          },
-        }),
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        maxOutputTokens: 300,
+        temperature: 0.85,
       },
-    );
-
-    if (!res.ok) {
-      const errBody = await res.text();
-      console.error("Gemini family-summary error:", res.status, errBody);
-      throw new Error(`Gemini HTTP ${res.status}`);
-    }
-
-    const data = (await res.json()) as
-      | {
-          candidates?: Array<{
-            content?: { parts?: Array<{ text?: string }> };
-          }>;
-        }
-      | undefined;
-    const text: string =
-      data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ??
+    });
+    const text =
+      response.text?.trim() ??
       "Grandma had a peaceful day. Give her a call when you can!";
 
     return NextResponse.json({ text });

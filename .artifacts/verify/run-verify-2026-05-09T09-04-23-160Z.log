@@ -1,0 +1,94 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\api\family-summary\route.ts
+  40:15  warning  'v' is defined but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  23:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\components\kiyoko\VoiceTriageModal.tsx
+  83:9  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\user\Desktop\ring-core\hooks\useIrisGaze.ts
+  225:13  warning  'resultReady' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 6 problems (0 errors, 6 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+ ❯ app/api/family-summary/route.test.ts (2 tests | 1 failed) 10ms
+     × includes totals and timeline for non-empty calls 8ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  app/api/family-summary/route.test.ts > buildPrompt > includes totals and timeline for non-empty calls
+AssertionError: expected 'Here is Kiyoko’s call log for 2026/04…' to contain '09:20 — Restroom'
+
+- Expected
++ Received
+
+- 09:20 — Restroom
++ Here is Kiyoko’s call log for 2026/04/10 (Fri).
++
++ Total calls: 2
++ By reason: "Restroom" ÁE{v}, "Chat" ÁE{v}
++ Timeline:
++   09:20  ERestroom
++   11:10  EChat (AI chat start)
++
++ Write a warm, reassuring message in English for her family (granddaughter tone).
++ Rules:
++ 1. Start in a conversational way (e.g. “Today, grandma… E.
++ 2. Mention patterns (time of day, common reasons) naturally.
++ 3. End with one gentle suggestion for the family (e.g. call her).
++ 4. Keep it 3 E sentences, under ~500 characters.
++ 5. Use at most 2 E emojis; stay positive and kind.
++ Output only the message  Eno headings or bullets.
+
+ ❯ app/api/family-summary/route.test.ts:20:20
+     18|     });
+     19|     expect(prompt).toContain("Total calls: 2");
+     20|     expect(prompt).toContain("09:20 — Restroom");
+       |                    ^
+     21|     expect(prompt).toContain("11:10 — Chat (AI chat start)");
+     22|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 7 passed (8)
+      Tests  1 failed | 42 passed (43)
+   Start at  18:04:30
+   Duration  1.53s (transform 321ms, setup 0ms, import 575ms, tests 58ms, environment 9.53s)
+
+
+--- [quality] exit_code=1
+
+❌ run:verify failed in 8809ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-04-23-160Z.log

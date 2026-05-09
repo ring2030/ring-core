@@ -1,0 +1,82 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+C:\Users\user\Desktop\ring-core\app\login\view.tsx
+  23:10  warning  'titleTapCount' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\components\kiyoko\VoiceTriageModal.tsx
+  83:9  warning  Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+C:\Users\user\Desktop\ring-core\hooks\useIrisGaze.ts
+  225:13  warning  'resultReady' is assigned a value but never used  @typescript-eslint/no-unused-vars
+
+C:\Users\user\Desktop\ring-core\scripts\make-slides.mjs
+  28:10  warning  'emu' is defined but never used    @typescript-eslint/no-unused-vars
+  53:10  warning  'arrow' is defined but never used  @typescript-eslint/no-unused-vars
+
+✖ 5 problems (0 errors, 5 warnings)
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  18:01:07
+   Duration  1.54s (transform 366ms, setup 0ms, import 662ms, tests 51ms, environment 9.61s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 3.1s
+  Running TypeScript ...
+Failed to type check.
+
+./app/api/chat/route.ts:334:44
+Type error: Argument of type '{ apiKey: string; message: string; history: { role: string; text: string; }[]; preferredModel: string; preferredBase: string | undefined; }' is not assignable to parameter of type '{ apiKey: string; message: string; history?: { role: string; text: string; }[]; preferredModel: string; preferredBase?: string; }' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+  Types of property 'preferredBase' are incompatible.
+    Type 'string | undefined' is not assignable to type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+
+  [90m332 |[0m     [36mconst[0m model = process.env[[32m"GEMINI_MODEL"[0m] ?? [32m"gemini-2.5-flash"[0m;
+  [90m333 |[0m
+[31m[1m>[0m [90m334 |[0m     [36mconst[0m result = [36mawait[0m tryGeminiGenerate({
+  [90m    |[0m                                            [31m[1m^[0m
+  [90m335 |[0m       apiKey,
+  [90m336 |[0m       message,
+  [90m337 |[0m       history,
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 16694ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T09-01-00-277Z.log

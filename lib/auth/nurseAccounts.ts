@@ -31,7 +31,7 @@ export type NurseAccountView = {
 export type NurseRole = "hospital_admin" | "nurse" | "viewer";
 
 // Prefer /tmp (writable on Vercel/Lambda); fall back to local .data for dev
-const STORE_DIR = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+const STORE_DIR = process.env["VERCEL"] || process.env["AWS_LAMBDA_FUNCTION_NAME"]
   ? "/tmp/.ring-data"
   : path.join(process.cwd(), ".data");
 const STORE_FILE = path.join(STORE_DIR, "nurse-accounts.json");
@@ -39,7 +39,7 @@ const DEFAULT_ID = "1";
 const DEFAULT_PASSWORD = "1";
 
 function getSecret(): string {
-  return process.env.APP_SIGNING_SECRET?.trim() || "ring-core-dev-only-secret-change-me";
+  return process.env["APP_SIGNING_SECRET"]?.trim() || "ring-core-dev-only-secret-change-me";
 }
 
 function hashPassword(password: string): string {

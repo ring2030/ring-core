@@ -124,11 +124,12 @@ export async function PATCH(req: Request) {
     const updated = await updateNurseAccount({
       id,
       hospitalId: session.hospitalId,
-      disabled: typeof body.disabled === "boolean" ? body.disabled : undefined,
-      password: typeof body.password === "string" ? body.password : undefined,
-      role: typeof body.role === "string" ? body.role : undefined,
-      mustChangePassword:
-        typeof body.mustChangePassword === "boolean" ? body.mustChangePassword : undefined,
+      ...(typeof body.disabled === "boolean" ? { disabled: body.disabled } : {}),
+      ...(typeof body.password === "string" ? { password: body.password } : {}),
+      ...(typeof body.role === "string" ? { role: body.role } : {}),
+      ...(typeof body.mustChangePassword === "boolean"
+        ? { mustChangePassword: body.mustChangePassword }
+        : {}),
     });
     await appendAuditEvent({
       at: new Date().toISOString(),

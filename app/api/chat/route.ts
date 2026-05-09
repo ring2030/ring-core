@@ -52,6 +52,10 @@ const FALLBACK: TriageResponse = {
 };
 let apiBackoffUntil = 0;
 
+function pickRandom(items: readonly string[], fallback: string): string {
+  return items[Math.floor(Math.random() * items.length)] ?? fallback;
+}
+
 export function localTriage(message: string): TriageResponse {
   const text = String(message ?? "").replace(/\s+/g, "");
 
@@ -122,7 +126,7 @@ export function localTriage(message: string): TriageResponse {
       "That sounds hard. The team cares about you.",
     ];
     return {
-      response: responses[Math.floor(Math.random() * responses.length)],
+      response: pickRandom(responses, "You’re not alone. We’re here with you."),
       summary: "Loneliness / anxiety / emotional distress",
       priority: 2,
     };
@@ -135,7 +139,7 @@ export function localTriage(message: string): TriageResponse {
       "Okay — we’re on it.",
     ];
     return {
-      response: responses[Math.floor(Math.random() * responses.length)],
+      response: pickRandom(responses, "Got it — we’ll bring that to you."),
       summary: "Routine assistance (water, meds, repositioning)",
       priority: 3,
     };
@@ -149,7 +153,7 @@ export function localTriage(message: string): TriageResponse {
   ];
 
   return {
-    response: casualResponses[Math.floor(Math.random() * casualResponses.length)],
+    response: pickRandom(casualResponses, "Tell me a bit more when you’re ready."),
     summary: "Casual conversation / routine check-in",
     priority: 1,
   };
@@ -323,16 +327,16 @@ export async function POST(req: Request) {
       return NextResponse.json(local satisfies TriageResponse);
     }
 
-    const apiBase = process.env.GEMINI_API_BASE?.replace(/\/$/, "");
+    const apiBase = process.env["GEMINI_API_BASE"]?.replace(/\/$/, "");
     // Override with GEMINI_MODEL in .env.local if needed
-    const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+    const model = process.env["GEMINI_MODEL"] ?? "gemini-2.5-flash";
 
     const result = await tryGeminiGenerate({
       apiKey,
       message,
       history,
       preferredModel: model,
-      preferredBase: apiBase,
+      ...(apiBase !== undefined ? { preferredBase: apiBase } : {}),
     });
 
     if (!result.ok) {

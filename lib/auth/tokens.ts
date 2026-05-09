@@ -28,7 +28,7 @@ const DEFAULT_INVITE_TTL_SEC = 60 * 60 * 8;
 const DEV_FALLBACK_SECRET = "ring-core-dev-only-secret-change-me";
 
 function getSigningSecret(): string {
-  return process.env.APP_SIGNING_SECRET?.trim() || DEV_FALLBACK_SECRET;
+  return process.env["APP_SIGNING_SECRET"]?.trim() || DEV_FALLBACK_SECRET;
 }
 
 function encodePayload(payload: object): string {
@@ -77,23 +77,23 @@ export function getSessionCookieName(): string {
 
 export function createSessionToken(input: {
   role: AppRole;
-  nurseId?: string;
-  nurseRole?: "hospital_admin" | "nurse" | "viewer";
-  hospitalId?: string;
-  hospitalIds?: string[];
-  patientId?: string;
-  patientName?: string;
-  ttlSec?: number;
+  nurseId?: string | undefined;
+  nurseRole?: "hospital_admin" | "nurse" | "viewer" | undefined;
+  hospitalId?: string | undefined;
+  hospitalIds?: string[] | undefined;
+  patientId?: string | undefined;
+  patientName?: string | undefined;
+  ttlSec?: number | undefined;
 }): string {
   const ttlSec = input.ttlSec ?? SESSION_TTL_SEC;
   const payload: SessionPayload = {
     role: input.role,
-    nurseId: input.nurseId,
-    nurseRole: input.nurseRole,
-    hospitalId: input.hospitalId,
-    hospitalIds: input.hospitalIds,
-    patientId: input.patientId,
-    patientName: input.patientName,
+    ...(input.nurseId !== undefined ? { nurseId: input.nurseId } : {}),
+    ...(input.nurseRole !== undefined ? { nurseRole: input.nurseRole } : {}),
+    ...(input.hospitalId !== undefined ? { hospitalId: input.hospitalId } : {}),
+    ...(input.hospitalIds !== undefined ? { hospitalIds: input.hospitalIds } : {}),
+    ...(input.patientId !== undefined ? { patientId: input.patientId } : {}),
+    ...(input.patientName !== undefined ? { patientName: input.patientName } : {}),
     exp: Math.floor(Date.now() / 1000) + ttlSec,
   };
   return packSignedToken(payload);
@@ -105,17 +105,17 @@ export function verifySessionToken(token: string): SessionPayload | null {
 
 export function createInviteToken(input: {
   role: Extract<AppRole, "family" | "patient">;
-  hospitalId?: string;
-  patientId?: string;
-  patientName?: string;
-  ttlSec?: number;
+  hospitalId?: string | undefined;
+  patientId?: string | undefined;
+  patientName?: string | undefined;
+  ttlSec?: number | undefined;
 }): string {
   const ttlSec = input.ttlSec ?? DEFAULT_INVITE_TTL_SEC;
   const payload: InvitePayload = {
     role: input.role,
-    hospitalId: input.hospitalId,
-    patientId: input.patientId,
-    patientName: input.patientName,
+    ...(input.hospitalId !== undefined ? { hospitalId: input.hospitalId } : {}),
+    ...(input.patientId !== undefined ? { patientId: input.patientId } : {}),
+    ...(input.patientName !== undefined ? { patientName: input.patientName } : {}),
     exp: Math.floor(Date.now() / 1000) + ttlSec,
   };
   return packSignedToken(payload);

@@ -25,8 +25,6 @@ const C = {
 };
 
 // ── Helpers ─────────────────────────────────────────────────────
-function emu(inches) { return inches; } // pptxgenjs uses inches natively
-
 function card(slide, x, y, w, h, opts = {}) {
   slide.addShape(pptx.ShapeType.roundRect, {
     x, y, w, h,
@@ -47,13 +45,6 @@ function label(slide, text, x, y, w, h, opts = {}) {
     valign: opts.valign || 'middle',
     fontFace: 'Segoe UI',
     wrap: true,
-  });
-}
-
-function arrow(slide, x1, y1, x2, y2, opts = {}) {
-  slide.addShape(pptx.ShapeType.line, {
-    x: x1, y: y1, w: x2 - x1, h: y2 - y1,
-    line: { color: opts.color || C.slate, width: opts.width || 1.5, dashType: opts.dash || 'solid', endArrowType: 'triangle' },
   });
 }
 

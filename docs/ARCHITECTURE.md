@@ -10,7 +10,7 @@ Patient (eye gaze)
 │  - Default: MediaPipe iris (TF.js)        │
 │  - Optional: Eyedid SDK (WebAssembly)     │
 │  - Gaze → target → progress               │
-│  - Voice conversation (Gemini REST)       │
+│  - Voice conversation (Gemini via REST)   │
 └─────────────────┬─────────────────────────┘
                   │ addDoc (Firestore)
                   ▼
@@ -79,6 +79,9 @@ TriageResponse { response, summary, priority: 1–5 }
   │
   ▼
 updateDoc(calls/{id}, { 要約, 緊急度 })
+
+POST /api/family-summary
+  │  @google/genai SDK (GoogleGenAI.models.generateContent)
 ```
 ## Firestore Data Model
 ### `calls` collection
