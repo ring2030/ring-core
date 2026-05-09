@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { requireServerEnv } from "@/lib/validateEnv";
 import { getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
 import {
   buildRateLimitHeaders,
+  captureLimitUnavailable,
   checkRateLimit,
   isRateLimitUnavailableError,
   readRateLimitPolicy,
@@ -493,6 +495,7 @@ export async function POST(req: Request) {
     });
   } catch (error: unknown) {
     if (isRateLimitUnavailableError(error)) {
+      captureLimitUnavailable(error, "POST /api/chat");
       return NextResponse.json(
         {
           response: "Service temporarily unavailable.",
@@ -502,6 +505,7 @@ export async function POST(req: Request) {
         { status: 503 },
       );
     }
+    Sentry.captureException(error);
     console.error(`[API /chat] exception:`, toErrorMessage(error));
     const local = localTriage(message);
     console.log(`[API /chat] localTriage (exception):`, local);

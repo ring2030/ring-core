@@ -45,6 +45,12 @@ Gemini access is server-side only. **`/api/chat` uses REST (`fetch`)**, while **
 | [firebase](https://firebase.google.com/) | 12.11.0 | Firestore (client) — real-time call updates, video message storage |
 | [firebase-admin](https://firebase.google.com/docs/admin) | 13.9.0 | Firestore (server-side API routes), audit log persistence |
 
+## Observability
+
+| Package | Version | Why |
+|---------|---------|-----|
+| [@sentry/nextjs](https://docs.sentry.io/platforms/javascript/guides/nextjs/) | (see `package.json`) | Error tracking for App Router / API routes / edge runtime with release artifacts |
+
 ## UI
 
 | Package | Version | Why |
@@ -103,6 +109,8 @@ npm run run:auto      # Watch mode: reruns quality on file changes
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | One of the Admin paths is required in production | Single-line JSON service account (preferred). |
 | `FIREBASE_ADMIN_PROJECT_ID` / `FIREBASE_ADMIN_CLIENT_EMAIL` / `FIREBASE_ADMIN_PRIVATE_KEY` | Alternative Admin path | Discrete env vars. `\n` is normalised to real newlines. |
 | `AUDIT_LOGS_COLLECTION` | No | Override Firestore collection name (default: `audit_logs`). |
+| `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Recommended in production | Server/client error ingestion DSNs. |
+| `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` | Needed for source map upload | Used by `withSentryConfig` during build/deploy pipeline. |
 
 Copy `.env.example` to `.env.local` and fill in values before starting the dev server.
 

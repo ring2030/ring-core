@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import * as Sentry from "@sentry/nextjs";
 import { getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
 import { listAuditEvents } from "@/lib/audit/auditLog";
 
@@ -14,6 +15,7 @@ export async function GET() {
     const events = await listAuditEvents(session.hospitalId, 80);
     return NextResponse.json({ ok: true, events });
   } catch (error: unknown) {
+    Sentry.captureException(error, { tags: { scope: "audit", route: "GET /api/audit-logs" } });
     const message = error instanceof Error ? error.message : "Could not load audit logs.";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }

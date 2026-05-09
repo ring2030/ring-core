@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
+import * as Sentry from "@sentry/nextjs";
 import { getFirebaseAdminDb } from "@/lib/firebaseAdmin";
 
 export type AuditActorRole = "nurse" | "family" | "patient" | "system";
@@ -132,6 +133,10 @@ export async function appendAuditEvent(event: AuditEvent): Promise<void> {
         errorName: name,
         errorCode: code,
       });
+      Sentry.captureException(error, {
+        tags: { scope: "audit", op: "audit_write" },
+        extra: { hospitalId: event.hospitalId, errorCode: code },
+      });
       throw error;
     }
     structuredLog("warn", {
@@ -174,6 +179,10 @@ export async function listAuditEvents(
         hospitalId,
         errorName: name,
         errorCode: code,
+      });
+      Sentry.captureException(error, {
+        tags: { scope: "audit", op: "audit_read" },
+        extra: { hospitalId, errorCode: code },
       });
       throw error;
     }

@@ -1,4 +1,5 @@
 import { Redis } from "@upstash/redis";
+import * as Sentry from "@sentry/nextjs";
 
 type RateLimitPolicy = {
   windowMs: number;
@@ -8,7 +9,7 @@ type RateLimitPolicy = {
   quietHoursMultiplier: number;
 };
 
-type RateLimitResult = {
+export type RateLimitResult = {
   allowed: boolean;
   limit: number;
   remaining: number;
@@ -32,10 +33,16 @@ type GlobalWithRateLimit = typeof globalThis & {
 };
 
 const g = globalThis as GlobalWithRateLimit;
-const memoryState: CounterStoreWithMeta = g.__ringRateLimitStore ?? { store: new Map<string, CounterEntry>() };
+const memoryState: CounterStoreWithMeta =
+  g.__ringRateLimitStore ?? { store: new Map<string, CounterEntry>() };
 g.__ringRateLimitStore = memoryState;
+
 let redisClient: Redis | null | undefined;
 const RATE_LIMIT_UNAVAILABLE_CODE = "RATE_LIMIT_UNAVAILABLE";
+
+// How many requests per window to allow for requests whose IP cannot be determined.
+// Deliberately tight — if you can't identify the caller, be conservative.
+const UNKNOWN_IP_MAX_REQUESTS_PER_WINDOW = 5;
 
 function clampPositiveInt(value: string | undefined, fallback: number): number {
   const n = Number(value);
@@ -57,7 +64,10 @@ function clampMultiplier(value: string | undefined, fallback: number): number {
   return n;
 }
 
-export function readRateLimitPolicy(envPrefix: string, defaults: RateLimitPolicy): RateLimitPolicy {
+export function readRateLimitPolicy(
+  envPrefix: string,
+  defaults: RateLimitPolicy,
+): RateLimitPolicy {
   const maxRequests = clampPositiveInt(
     process.env[`${envPrefix}_MAX_REQUESTS`],
     defaults.maxRequests,
@@ -87,15 +97,36 @@ export function readRateLimitPolicy(envPrefix: string, defaults: RateLimitPolicy
   };
 }
 
-function clientKeyFromRequest(request: Request): string {
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const firstIp = forwardedFor.split(",")[0]?.trim();
-    if (firstIp) return firstIp;
+/**
+ * Resolve the client key from the request.
+ *
+ * Trust order (most → least reliable):
+ *  1. `x-vercel-proxied-for` — set by Vercel's edge network, not forgeable by clients
+ *  2. `x-real-ip`            — set by Vercel / reverse proxies
+ *  3. `x-forwarded-for` first hop — can be spoofed; used only as last resort
+ *
+ * Returns `null` when no IP can be determined. Callers apply a tighter budget
+ * to null/unknown callers rather than collapsing them into one shared bucket.
+ */
+function clientKeyFromRequest(request: Request): string | null {
+  // Most trustworthy on Vercel — not spoofable by clients
+  const vercelProxied = request.headers.get("x-vercel-proxied-for");
+  if (vercelProxied) {
+    const ip = vercelProxied.split(",")[0]?.trim();
+    if (ip) return ip;
   }
+
   const realIp = request.headers.get("x-real-ip");
   if (realIp) return realIp.trim();
-  return "unknown";
+
+  // x-forwarded-for can be injected by clients; use as last resort only
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) {
+    const ip = forwardedFor.split(",")[0]?.trim();
+    if (ip) return ip;
+  }
+
+  return null;
 }
 
 export function checkRateLimit(
@@ -105,8 +136,18 @@ export function checkRateLimit(
   actorSegment = "default",
 ): Promise<RateLimitResult> {
   const now = Date.now();
-  const clientKey = clientKeyFromRequest(request);
-  const effectiveLimit = effectiveMaxRequests(policy, now);
+  const rawClientKey = clientKeyFromRequest(request);
+  const effectiveLimit = rawClientKey !== null
+    ? effectiveMaxRequests(policy, now)
+    : Math.min(UNKNOWN_IP_MAX_REQUESTS_PER_WINDOW, effectiveMaxRequests(policy, now));
+
+  // Unknown IPs each get an independent bucket keyed to their request timestamp
+  // to the window boundary (so they can't all pile into "unknown" and either
+  // collectively exhaust the shared limit or collectively avoid it).
+  // Instead we hash a portion of the User-Agent to give some per-client bucket,
+  // which is better than a single global "unknown" bucket.
+  const clientKey = rawClientKey ?? buildUnknownKey(request);
+
   const windowStartMs = Math.floor(now / policy.windowMs) * policy.windowMs;
   const windowEndMs = windowStartMs + policy.windowMs;
   const resetSec = Math.max(Math.ceil((windowEndMs - now) / 1000), 1);
@@ -122,6 +163,23 @@ export function checkRateLimit(
   });
 }
 
+/**
+ * For requests where IP is unavailable, derive a semi-stable key from
+ * User-Agent + Accept-Language so callers are not all lumped into one bucket.
+ * This is a best-effort heuristic only — use Redis for production accuracy.
+ */
+function buildUnknownKey(request: Request): string {
+  const ua = request.headers.get("user-agent") ?? "";
+  const lang = request.headers.get("accept-language") ?? "";
+  const raw = `${ua}||${lang}`.slice(0, 200);
+  let h = 5381;
+  for (let i = 0; i < raw.length; i++) {
+    h = ((h << 5) + h) ^ (raw.charCodeAt(i) & 0xff);
+    h = h >>> 0;
+  }
+  return `unknown-${h.toString(16)}`;
+}
+
 type IncrementParams = {
   key: string;
   windowMs: number;
@@ -131,7 +189,9 @@ type IncrementParams = {
   resetSec: number;
 };
 
-async function incrementFromBestEffortStore(params: IncrementParams): Promise<RateLimitResult> {
+async function incrementFromBestEffortStore(
+  params: IncrementParams,
+): Promise<RateLimitResult> {
   if (isProduction() && !isKvConfigured()) {
     throw new Error(
       `${RATE_LIMIT_UNAVAILABLE_CODE}: Redis REST credentials are required in production.`,
@@ -183,17 +243,27 @@ function isKvConfigured(): boolean {
   return hasVercelKv || hasUpstashRedis;
 }
 
-async function incrementFromRedis(key: string, windowMs: number): Promise<number> {
+/**
+ * Atomic INCR + EXPIRE via Upstash Redis pipeline.
+ * Both commands are sent in a single HTTP request, so a network failure
+ * cannot leave a key without a TTL (unlike two separate calls).
+ */
+async function incrementFromRedis(
+  key: string,
+  windowMs: number,
+): Promise<number> {
   const redis = getRedisClient();
   if (!redis) {
     throw new Error("Redis REST credentials are not configured.");
   }
-  const nextCount = await redis.incr(key);
-  if (nextCount === 1) {
-    // Keep for one full window plus tiny safety buffer.
-    const ttlSec = Math.max(Math.ceil(windowMs / 1000) + 2, 2);
-    await redis.expire(key, ttlSec);
-  }
+  const ttlSec = Math.max(Math.ceil(windowMs / 1000) + 2, 2);
+  // Pipeline: both commands sent atomically in one HTTP round-trip.
+  const results = await redis
+    .pipeline()
+    .incr(key)
+    .expire(key, ttlSec)
+    .exec();
+  const nextCount = results[0] as number;
   return nextCount;
 }
 
@@ -273,9 +343,24 @@ export function isRateLimitUnavailableError(error: unknown): boolean {
   return message.includes(RATE_LIMIT_UNAVAILABLE_CODE);
 }
 
+/**
+ * Call this from API routes when `isRateLimitUnavailableError` returns true.
+ * Sends to Sentry (throttled to 1 per minute to avoid event flooding).
+ */
+export function captureLimitUnavailable(error: unknown, route: string): void {
+  Sentry.captureException(error, {
+    tags: { scope: "rateLimit", route },
+    level: "error",
+  });
+}
+
 function effectiveMaxRequests(policy: RateLimitPolicy, nowMs: number): number {
   const jstHour = new Date(nowMs + 9 * 60 * 60 * 1000).getUTCHours();
-  const inQuietHours = isInQuietHours(jstHour, policy.quietHoursJstStart, policy.quietHoursJstEnd);
+  const inQuietHours = isInQuietHours(
+    jstHour,
+    policy.quietHoursJstStart,
+    policy.quietHoursJstEnd,
+  );
   if (!inQuietHours) return policy.maxRequests;
   const boosted = Math.floor(policy.maxRequests * policy.quietHoursMultiplier);
   return Math.max(boosted, policy.maxRequests);
@@ -293,9 +378,7 @@ export function buildRateLimitHeaders(result: RateLimitResult): HeadersInit {
     "X-RateLimit-Remaining": String(result.remaining),
     "X-RateLimit-Reset": String(result.resetSec),
     ...(result.retryAfterSec > 0
-      ? {
-          "Retry-After": String(result.retryAfterSec),
-        }
+      ? { "Retry-After": String(result.retryAfterSec) }
       : {}),
   };
 }

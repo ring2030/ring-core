@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { GoogleGenAI } from "@google/genai";
 import { cookies } from "next/headers";
 import { getSessionCookieName, verifySessionToken } from "@/lib/auth/tokens";
 import {
   buildRateLimitHeaders,
+  captureLimitUnavailable,
   checkRateLimit,
   isRateLimitUnavailableError,
   readRateLimitPolicy,
@@ -150,11 +152,13 @@ export async function POST(req: Request) {
     );
   } catch (err: unknown) {
     if (isRateLimitUnavailableError(err)) {
+      captureLimitUnavailable(err, "POST /api/family-summary");
       return NextResponse.json(
         { error: "Rate-limit backend unavailable." },
         { status: 503 },
       );
     }
+    Sentry.captureException(err);
     const message = toErrorMessage(err);
     console.error("family-summary route error:", message);
     return NextResponse.json(

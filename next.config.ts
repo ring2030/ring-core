@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 import { validateEnv } from "./lib/validateEnv";
 
 /** Turbopack は Windows の絶対パス alias を未対応のため相対パスで渡す */
@@ -70,4 +71,17 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+const sentryOrg = process.env["SENTRY_ORG"]?.trim();
+const sentryProject = process.env["SENTRY_PROJECT"]?.trim();
+const sentryAuthToken = process.env["SENTRY_AUTH_TOKEN"]?.trim();
+
+export default withSentryConfig(nextConfig, {
+  // Keep source maps hidden from public bundles while still uploading.
+  sourcemaps: {
+    disable: !sentryAuthToken,
+  },
+  ...(sentryOrg ? { org: sentryOrg } : {}),
+  ...(sentryProject ? { project: sentryProject } : {}),
+  ...(sentryAuthToken ? { authToken: sentryAuthToken } : {}),
+  silent: true,
+});
