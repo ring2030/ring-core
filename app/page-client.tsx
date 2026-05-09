@@ -509,6 +509,20 @@ export default function GrandmaGazePage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 font-sans select-none">
+      {/* Judge-friendly context banner. Shown only on tablet/desktop where the
+          fixed top position doesn't overlap the gaze targets. */}
+      <div className="fixed top-14 left-1/2 -translate-x-1/2 z-40 hidden sm:flex items-center gap-2 bg-white/90 backdrop-blur px-4 py-1.5 rounded-full shadow-sm text-xs text-gray-700 pointer-events-auto">
+        <span className="font-semibold tracking-wide">ring</span>
+        <span className="text-gray-300">·</span>
+        <span>Eye-gaze nurse call · Built by 11–16 year old girls in Japan</span>
+        <Link
+          href="/demo-1min"
+          className="text-blue-600 underline underline-offset-2 hover:text-blue-700"
+        >
+          60-sec demo →
+        </Link>
+      </div>
+
       <div className="fixed left-1/2 top-4 z-[10002] flex -translate-x-1/2 items-center gap-2 rounded-full border border-white/10 bg-slate-900/90 px-3 py-2 shadow-lg backdrop-blur-md">
         <span className="rounded-full bg-cyan-500 px-3 py-1 text-xs font-bold text-white">
           Patient

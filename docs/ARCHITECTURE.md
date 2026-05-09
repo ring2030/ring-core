@@ -83,6 +83,26 @@ updateDoc(calls/{id}, { 要約, 緊急度 })
 POST /api/family-summary
   │  @google/genai SDK (GoogleGenAI.models.generateContent)
 ```
+## Rate Limiting & Cost Guards
+
+The two AI-bearing endpoints (`POST /api/chat`, `POST /api/family-summary`) call paid LLM APIs. To prevent runaway costs from misbehaving clients and to keep the live demo URL responsive under adversarial load, both endpoints are gated by sliding-window rate limits backed by **Upstash Redis** (`@upstash/redis`).
+
+```
+incoming request
+      │
+      ▼
+identify caller (session cookie if present, else IP-based key)
+      │
+      ▼
+Upstash Redis: INCR within window
+      │
+      ├─ within budget → forward to Gemini
+      └─ over budget   → return 429 (Too Many Requests)
+                          + structured log line
+```
+
+Limits are deliberately conservative for the demo deployment: enough for a judge or genuine user to complete an end-to-end flow, restrictive enough that scripted abuse hits the wall fast. Limits are tuned via env vars so we can loosen them once a real hospital pilot starts.
+
 ## Audit Log Persistence
 Operational events flow through `lib/audit/auditLog.ts` and are written by the Firebase Admin SDK to the `audit_logs` Firestore collection.
 ```
@@ -100,6 +120,17 @@ Firestore: audit_logs   ── where(hospitalId,==,X).orderBy(at,desc).limit(N)
    (dev/test only: JSONL fallback at <cwd>/.data/audit-log.jsonl)
 ```
 Server-only access is enforced by `firestore.rules` (`audit_logs` is `allow read, write: if false`); the `/api/audit-logs` and `/api/audit-logs/export` routes are the only sanctioned read paths.
+## Observability
+
+Production errors are captured by **Sentry** (`@sentry/nextjs`) on both sides of the stack:
+
+- **Client:** Gaze pipeline failures (TF.js init failure, MediaPipe asset 404, Eyedid license validation), Web Speech API errors, unhandled React errors via the Sentry error boundary.
+- **Server:** Route Handler exceptions, Gemini API failures (with the local rule-based fallback path tracked separately so we can see how often the safety net activates), Firebase Admin errors, rate-limit denials.
+
+PII is scrubbed before events leave the application — patient names, voice transcripts, and family video URLs are stripped via Sentry's `beforeSend` hook.
+
+Sentry release tracking is keyed off the Vercel deployment ID, so we can attribute regressions to a specific deploy.
+
 ## Firestore Data Model
 ### `calls` collection
 | Field | Type | Description |

@@ -1,0 +1,72 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  23:44:16
+   Duration  2.11s (transform 475ms, setup 0ms, import 1.65s, tests 45ms, environment 10.16s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · clientTraceMetadata
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 5.1s
+  Running next.config.js provided runAfterProductionCompile ...
+✓ Completed runAfterProductionCompile in 276ms
+  Running TypeScript ...
+Failed to type check.
+
+./playwright.config.ts:6:29
+Type error: No overload matches this call.
+  The last overload gave the following error.
+    Argument of type '{ testDir: string; fullyParallel: true; forbidOnly: boolean; retries: number; workers: number | undefined; reporter: "list" | (["github"] | ["html", { open: "never"; }])[]; use: { baseURL: string; trace: "on-first-retry"; screenshot: "only-on-failure"; video: "retain-on-failure"; }; webServer: { ...; } | undefined; ...' is not assignable to parameter of type 'PlaywrightTestConfig<unknown, unknown>' with 'exactOptionalPropertyTypes: true'. Consider adding 'undefined' to the types of the target's properties.
+      Types of property 'webServer' are incompatible.
+        Type '{ command: string; url: string; reuseExistingServer: true; timeout: number; } | undefined' is not assignable to type 'TestConfigWebServer | TestConfigWebServer[]'.
+          Type 'undefined' is not assignable to type 'TestConfigWebServer | TestConfigWebServer[]'.
+
+  [90m4 |[0m [36mconst[0m useExternalBaseUrl = [33mBoolean[0m(process.env[[32m"PLAYWRIGHT_BASE_URL"[0m]);
+  [90m5 |[0m
+[31m[1m>[0m [90m6 |[0m [36mexport[0m [36mdefault[0m defineConfig({
+  [90m  |[0m                             [31m[1m^[0m
+  [90m7 |[0m   testDir: [32m"./e2e"[0m,
+  [90m8 |[0m   fullyParallel: [36mtrue[0m,
+  [90m9 |[0m   forbidOnly: !!process.env[[32m"CI"[0m],
+Next.js build worker exited with code: 1 and signal: null
+
+--- [build] exit_code=1
+
+❌ run:verify failed in 22449ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T14-44-08-424Z.log

@@ -42,7 +42,7 @@ The default **patient UI is English**. Legacy Japanese labels in Firestore are n
 | **Gaze** | **MediaPipe iris path (default)** — in-browser face detection + gaze heuristics. **Eyedid (seeso)** — optional 5-point calibration (`NEXT_PUBLIC_EYEDID_LICENSE_KEY`). **Pointer / touch** — same two targets for demos or accessibility. |
 | **Patient home (`/`)** | Dwell on **Restroom** or **Chat**; voice + AI triage after **Chat** when enabled. |
 | **Staff / family** | Firestore-backed dashboards, signed invites, video-letter hooks (see routes). |
-| **AI** | Gemini via server Route Handlers: `POST /api/chat` (REST via `fetch` + regex fallback) and `POST /api/family-summary` (`@google/genai` SDK). |
+| **AI** | Both `POST /api/chat` and `POST /api/family-summary` run server-side via `@google/genai`, protected by Redis rate limits and monitored by Sentry. |
 
 Deeper design: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · Stack detail: [docs/TECH_STACK.md](docs/TECH_STACK.md)
 PoC docs (JA): [docs/poc-spec-contest-ja.md](docs/poc-spec-contest-ja.md) · [docs/poc-demo-checklist-ja.md](docs/poc-demo-checklist-ja.md) · [docs/poc-ops-runbook-ja.md](docs/poc-ops-runbook-ja.md)
@@ -57,9 +57,27 @@ Regression log (JA): [docs/regression-test-report-2026-04-27.md](docs/regression
 | **App** | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4 |
 | **Gaze** | TensorFlow.js, self-hosted MediaPipe-style assets under `public/`, optional Eyedid (`seeso`) |
 | **Data** | Firebase (Firestore, Storage as configured) |
-| **AI** | Hybrid: `POST /api/chat` is REST (`fetch`), `POST /api/family-summary` is `@google/genai` SDK; both server-side with `GEMINI_API_KEY` |
+| **AI** | Both `POST /api/chat` and `POST /api/family-summary` use `@google/genai` server-side, gated by Upstash Redis rate limits, with errors reported to Sentry |
+| **Cost guard** | Upstash Redis — sliding-window rate limiting on AI endpoints (`/api/chat`, `/api/family-summary`) to protect Gemini quota & demo uptime |
+| **Observability** | Sentry (`@sentry/nextjs`) — production error tracking across client (gaze pipeline, Web Speech) and server (Route Handlers, Gemini calls) |
 | **Voice** | Web Speech API (Chrome / Edge) |
 | **Quality** | Vitest, ESLint, `run:verify` (lint + tests + production build) |
+
+### Recent improvements (post-submission iteration log)
+
+We continued iterating after the April 20 submission. This log captures concrete production hardening work completed afterward, both for transparency and for engineering traceability.
+
+| # | Area | Change | Why it mattered |
+|---|------|--------|-----------------|
+| 1 | Documentation | Fixed drift between `ARCHITECTURE.md` and the live implementation (default gaze engine, AI SDK paths) | Misdocumentation erodes trust. The default path is **MediaPipe iris (browser-only)**, not Eyedid — and our docs now say so clearly. |
+| 2 | Type safety | Raised TypeScript strictness: `noUncheckedIndexedAccess`, ES2022 target, plus 3 other strict flags | Surfaced several latent off-by-one assumptions in the gaze selection code that the looser config silently tolerated. |
+| 3 | Dependency hygiene | Consolidated Gemini SDK to `@google/genai`, removed the legacy `@google/generative-ai` | Two SDKs from different migration timelines = surprise. One source of truth = fewer surprises. |
+| 4 | Code quality | Cleared all 5 outstanding ESLint warnings | Zero-warning baseline so any new warning stands out. |
+| 5 | **Audit log persistence** | Migrated from JSONL filesystem fallback to **Firestore** (via `firebase-admin`) | Vercel's filesystem is ephemeral — every deploy was wiping the audit trail. Firestore-backed persistence is enforced by `firestore.rules` (server-only access). |
+| 6 | **Rate limiting** | Added Upstash Redis sliding-window rate limits on `/api/chat` and `/api/family-summary` | Without this, a single misbehaving client could exhaust our Gemini quota and take the demo down. Critical for a public live demo URL. |
+| 7 | **Observability** | Wired up Sentry for client + server error tracking | We needed visibility into gaze pipeline failures, AI fallback rates, and auth lockouts to keep the demo trustworthy under real traffic. |
+
+Each update addressed a concrete operational risk, not feature creep. The bold rows (5, 6, 7) are production-readiness items: areas that can appear fine locally but fail or degrade under live traffic.
 
 ---
 
@@ -74,8 +92,9 @@ For a scripted demo, use `/demo` or `/demo-1min` if your deployment includes tho
 The 60-second judge-friendly flow is available at [`/demo-1min`](http://localhost:3000/demo-1min) in local development.
 `/demo-1min` also includes a **30-second post-demo survey** to collect implementation evidence (impact, trust, adoption intent).
 Production demo links:
-- [`https://ring-core2026.vercel.app/demo-1min`](https://ring-core2026.vercel.app/demo-1min) (60-second walkthrough)
+- **Judges: start here →** [`https://ring-core2026.vercel.app/demo-1min`](https://ring-core2026.vercel.app/demo-1min) (60-second walkthrough with built-in feedback survey)
 - [`https://ring-core2026.vercel.app/demo`](https://ring-core2026.vercel.app/demo) (screen-record style demo page)
+- [`https://ring-core2026.vercel.app`](https://ring-core2026.vercel.app) (main patient view)
 
 ---
 
@@ -156,6 +175,8 @@ npm run dev:node
 | `npm run run:quality` | Gaze lint + unit tests |
 | `npm run run:verify` | Full gate: lint + quality + **production build** (match CI) |
 | `npm run run:auto` | Watch and re-run checks |
+| `npm run test:e2e` | Playwright E2E smoke (auto starts `dev:3010`) |
+| `npm run test:e2e:ui` | Playwright UI mode |
 
 Logs: `.artifacts/verify/` (do not commit).
 
@@ -171,6 +192,24 @@ Logs: `.artifacts/verify/` (do not commit).
 ### Default demo login (development only)
 
 Nurse demo: **ID `1`** / **password `1`**. Replace or disable before any production use.
+
+---
+
+### Seeding demo data (judges & demos)
+
+To populate the nurse dashboard with realistic demo calls, set
+`SEED_DEMO_SECRET` in your environment and visit:
+
+- Local: `http://localhost:3000/api/dev/seed-demo?key=<your-secret>`
+- Production: `https://<your-domain>/api/dev/seed-demo?key=<your-secret>`
+
+Append `&action=clean` to remove the seeded entries.
+
+**Vercel:** Add `SEED_DEMO_SECRET` to Project Settings → Environment
+Variables → Production, then redeploy. The endpoint is gated by the
+secret query parameter, so without it the route returns 403. Optionally
+set `DEMO_HOSPITAL_ID` to scope the seed to a specific hospital
+(defaults to `demo-hospital`, which matches the demo `ID 1` nurse).
 
 ---
 

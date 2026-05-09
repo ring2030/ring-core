@@ -1,0 +1,4 @@
+{"at":"2026-05-09T14:43:47.957Z","hospitalId":"demo-hospital","actorId":"1","actorRole":"nurse","action":"auth.login","target":"session"}
+{"at":"2026-05-09T14:47:56.578Z","hospitalId":"demo-hospital","actorId":"1","actorRole":"nurse","action":"auth.login","target":"session"}
+{"at":"2026-05-09T14:47:56.506Z","hospitalId":"demo-hospital","actorId":"1","actorRole":"nurse","action":"auth.login","target":"session"}
+{"at":"2026-05-09T14:48:46.161Z","hospitalId":"demo-hospital","actorId":"1","actorRole":"nurse","action":"auth.login","target":"session"}

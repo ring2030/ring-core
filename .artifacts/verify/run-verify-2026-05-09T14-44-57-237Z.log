@@ -1,0 +1,97 @@
+
+=== [lint] npm run lint
+
+> ring-core@0.1.0 lint
+> eslint
+
+
+--- [lint] exit_code=0
+
+=== [quality] npm run run:quality
+
+> ring-core@0.1.0 run:quality
+> node ./tools/run-quality.mjs
+
+
+> ring-core@0.1.0 lint:gaze
+> eslint "lib/gaze/**/*.ts" "hooks/useEyedidGaze.ts" "components/kiyoko/EyedidCalibrationOverlay.tsx"
+
+
+> ring-core@0.1.0 test:run
+> vitest run
+
+
+ RUN  v4.1.4 C:/Users/user/Desktop/ring-core
+
+
+ Test Files  8 passed (8)
+      Tests  43 passed (43)
+   Start at  23:45:04
+   Duration  2.01s (transform 408ms, setup 0ms, import 1.50s, tests 43ms, environment 9.76s)
+
+
+--- [quality] exit_code=0
+
+=== [build] npm run build
+
+> ring-core@0.1.0 build
+> next build
+
+▲ Next.js 16.2.6 (Turbopack)
+- Environments: .env.local
+- Experiments (use with caution):
+  · clientTraceMetadata
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 5.0s
+  Running next.config.js provided runAfterProductionCompile ...
+✓ Completed runAfterProductionCompile in 252ms
+  Running TypeScript ...
+  Finished TypeScript in 4.7s ...
+  Collecting page data using 19 workers ...
+  Generating static pages using 19 workers (0/28) ...
+  Generating static pages using 19 workers (7/28) 
+  Generating static pages using 19 workers (14/28) 
+  Generating static pages using 19 workers (21/28) 
+✓ Generating static pages using 19 workers (28/28) in 734ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ƒ /access
+├ ƒ /api/audit-logs
+├ ƒ /api/audit-logs/export
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/hospital-switch
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/nurse-login
+├ ƒ /api/chat
+├ ƒ /api/demo-feedback
+├ ƒ /api/family-summary
+├ ƒ /api/invite
+├ ƒ /api/invite/consume
+├ ƒ /api/nurse-accounts
+├ ○ /dashboard
+├ ○ /dashboard/family
+├ ○ /dashboard/history
+├ ○ /dashboard/nurse
+├ ○ /demo
+├ ○ /demo-1min
+├ ○ /kiyoko
+├ ƒ /login
+├ ƒ /nurse-login
+├ ○ /record
+└ ○ /settings
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+
+--- [build] exit_code=0
+
+✅ run:verify passed in 23901ms
+log: C:\Users\user\Desktop\ring-core\.artifacts\verify\run-verify-2026-05-09T14-44-57-237Z.log

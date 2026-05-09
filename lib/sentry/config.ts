@@ -38,6 +38,36 @@ export function resolveRelease(
  *  - form values / query string values that look like freetext
  */
 export function makePiiBeforeSend() {
+  const SENSITIVE_KEYS = [
+    "送信者",
+    "sender",
+    "patientName",
+    "認識文",
+    "transcript",
+    "要約",
+    "summary",
+    "videoUrl",
+    "video_url",
+    "email",
+    "token",
+    "password",
+    "sessionId",
+  ];
+
+  const scrub = (value: unknown): unknown => {
+    if (!value || typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map((item) => scrub(item));
+
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      const hit = SENSITIVE_KEYS.some((s) =>
+        k.toLowerCase().includes(s.toLowerCase()),
+      );
+      out[k] = hit ? "[REDACTED]" : scrub(v);
+    }
+    return out;
+  };
+
   return function beforeSend(
     event: Parameters<NonNullable<import("@sentry/core").ClientOptions["beforeSend"]>>[0],
   ): typeof event | null {
@@ -52,6 +82,32 @@ export function makePiiBeforeSend() {
         (event.request.data as Record<string, unknown>)["message"] = "[redacted]";
       }
     }
+
+    if (event.contexts) {
+      event.contexts = scrub(event.contexts) as typeof event.contexts;
+    }
+    if (event.extra) {
+      event.extra = scrub(event.extra) as typeof event.extra;
+    }
+    if (event.request?.data) {
+      event.request.data = scrub(event.request.data);
+    }
+    if (event.request?.headers) {
+      event.request.headers = scrub(event.request.headers) as typeof event.request.headers;
+    }
+    if (event.request?.cookies) {
+      event.request.cookies = scrub(event.request.cookies) as typeof event.request.cookies;
+    }
+    if (event.breadcrumbs) {
+      event.breadcrumbs = event.breadcrumbs.map((b) => {
+        if (b.data === undefined) return b;
+        return {
+          ...b,
+          data: scrub(b.data) as typeof b.data,
+        };
+      });
+    }
+
     return event;
   };
 }
