@@ -25,6 +25,7 @@ import {
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { getFirebaseAuth, getFirestoreDb } from "@/lib/firebase";
 import { normalizeCallDoc } from "@/lib/calls/schema";
+import { extractVoiceFromRaw } from "@/lib/calls/extractVoice";
 import { emojiForReason } from "@/lib/calls/reasons";
 import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 import { buildNurseAnalytics } from "@/lib/dashboard/nurseAnalytics";
@@ -185,7 +186,7 @@ export default function NurseDashboard() {
         snap.docs.map((d) => {
           const normalized = normalizeCallDoc(d.id, d.data());
           const raw = d.data() as Record<string, unknown>;
-          const transcript = String(raw["transcript"] ?? raw["認識文"] ?? "").trim();
+          const transcript = extractVoiceFromRaw(raw);
           const staffNote = normalized.note.trim();
           const summary = normalized.aiSummary.trim();
           return {

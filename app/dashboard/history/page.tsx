@@ -8,6 +8,7 @@ import {
 } from "firebase/firestore";
 import { getFirestoreDb } from "@/lib/firebase";
 import { normalizeCallDoc } from "@/lib/calls/schema";
+import { extractVoiceFromRaw } from "@/lib/calls/extractVoice";
 import {
   AlertCircle,
   ChevronLeft,
@@ -184,9 +185,7 @@ export default function FamilyHistoryPage() {
       const transcriptById = new Map<string, string>();
       const normalized = snap.docs.map((d) => {
         const raw = d.data() as Record<string, unknown>;
-        const transcript = String(
-          raw["transcript"] ?? raw["認識文"] ?? "",
-        ).trim();
+        const transcript = extractVoiceFromRaw(raw);
         if (transcript) transcriptById.set(d.id, transcript);
         return normalizeCallDoc(d.id, d.data());
       });

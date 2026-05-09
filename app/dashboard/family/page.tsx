@@ -34,6 +34,7 @@ import {
 } from "@/components/dashboard/DashboardChrome";
 import { AppButton, AppCard, StatusBadge } from "@/components/ui/ThemePrimitives";
 import { REASON_CHAT, REASON_RESTROOM, emojiForReason } from "@/lib/calls/reasons";
+import { extractVoiceFromRaw } from "@/lib/calls/extractVoice";
 import { getCallsCollectionNameForCurrentHospital } from "@/lib/auth/clientHospital";
 import { dateLabel } from "@/lib/dashboard/historyUtils";
 
@@ -45,8 +46,13 @@ interface CallDoc {
   notes: string;
   /** AI-generated summary of the AI ↔ patient interaction. */
   aiSummary: string;
-  /** Patient's spoken line (STT). */
+  /** Raw STT / best-effort transcript from Firestore. */
   transcript: string;
+  /**
+   * What the family sees as “her words”: STT, or (for chat) legacy staff line
+   * when recognition text was never stored.
+   */
+  voiceLine: string;
   /** Triage band: 1–2 = AI handled, 3 = staff support, 4–5 = urgent. */
   priority: number;
   sender: string;
@@ -83,6 +89,22 @@ function isToday(src: Date): boolean {
 
 function isSameDay(a: Date, b: Date): boolean {
   return startOfDay(a).getTime() === startOfDay(b).getTime();
+}
+
+function isChatReason(reasons: string[]): boolean {
+  return reasons.some(
+    (r) => r === REASON_CHAT || r === "お話" || /conversation|listening|chat/i.test(r),
+  );
+}
+
+function buildFamilyVoiceLine(
+  reasons: string[],
+  transcript: string,
+  notes: string,
+): string {
+  if (transcript.trim()) return transcript.trim();
+  if (isChatReason(reasons) && notes.trim()) return notes.trim();
+  return "";
 }
 
 // ─── 小コンポーネント ──────────────────────────────────
@@ -254,15 +276,19 @@ export default function FamilyDashboardPage() {
             .map((d) => {
               const norm = normalizeCallDoc(d.id, d.data());
               const raw = d.data() as Record<string, unknown>;
-              const transcript = String(
-                raw["transcript"] ?? raw["認識文"] ?? "",
-              ).trim();
+              const transcript = extractVoiceFromRaw(raw);
+              const voiceLine = buildFamilyVoiceLine(
+                norm.reasons,
+                transcript,
+                norm.note,
+              );
               return {
                 id: norm.id,
                 reasons: norm.reasons,
                 notes: norm.note,
                 aiSummary: norm.aiSummary.trim(),
                 transcript,
+                voiceLine,
                 priority: norm.priority,
                 sender: norm.senderName,
                 ts: norm.createdAt,
@@ -415,17 +441,38 @@ export default function FamilyDashboardPage() {
     (countByReason[REASON_CHAT] ?? 0) + (countByReason["お話"] ?? 0);
 
   // ─── 直近7日のミニチャート ───────────────────────────
+  // If the newest Firestore row is older than “this calendar week”, anchoring
+  // on “today” leaves every bar at zero. End the week on the latest call day
+  // instead (still 7 day columns).
+  const chartWeekMeta = useMemo(() => {
+    const today = startOfDay(new Date());
+    if (allCalls.length === 0) {
+      return { end: today, anchoredToData: false };
+    }
+    let latestMs = 0;
+    for (const c of allCalls) {
+      if (c.ts) latestMs = Math.max(latestMs, c.ts.getTime());
+    }
+    if (!latestMs) return { end: today, anchoredToData: false };
+    const latestDay = startOfDay(new Date(latestMs));
+    const sixDaysMs = 6 * 24 * 60 * 60 * 1000;
+    const stale = latestDay.getTime() < today.getTime() - sixDaysMs;
+    return {
+      end: stale ? latestDay : today,
+      anchoredToData: stale,
+    };
+  }, [allCalls]);
 
   const last7Days = useMemo(() => {
-    const today = startOfDay(new Date());
+    const end = chartWeekMeta.end;
     const days: Array<{ date: Date; count: number; staff: number; urgent: number }> = [];
     for (let i = 6; i >= 0; i -= 1) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      const start = d.getTime();
-      const end = endOfDay(d).getTime();
+      const d = new Date(end);
+      d.setDate(end.getDate() - i);
+      const start = startOfDay(d).getTime();
+      const dayEnd = endOfDay(d).getTime();
       const dayCalls = allCalls.filter(
-        (c) => c.ts && c.ts.getTime() >= start && c.ts.getTime() <= end,
+        (c) => c.ts && c.ts.getTime() >= start && c.ts.getTime() <= dayEnd,
       );
       days.push({
         date: d,
@@ -435,7 +482,7 @@ export default function FamilyDashboardPage() {
       });
     }
     return days;
-  }, [allCalls]);
+  }, [allCalls, chartWeekMeta.end]);
   const last7Max = Math.max(1, ...last7Days.map((d) => d.count));
 
   const dayShortLabel = useCallback((d: Date): string => {
@@ -568,7 +615,13 @@ export default function FamilyDashboardPage() {
             <Clock size={18} className="text-cyan-500" />
             Past 7 days
           </h2>
-          <div className="flex items-end justify-between gap-2">
+          {chartWeekMeta.anchoredToData && (
+            <p className="-mt-2 mb-4 text-[11px] leading-snug text-cyan-800/80">
+              Showing the week ending {dateLabel(chartWeekMeta.end)} so your
+              latest calls are visible (activity is older than the current week).
+            </p>
+          )}
+          <div className="mb-4 flex items-end justify-between gap-2">
             {last7Days.map((d) => {
               const selected = isSameDay(d.date, selectedDate);
               const hasUrgent = d.urgent > 0;
@@ -707,10 +760,17 @@ export default function FamilyDashboardPage() {
                         </p>
                         {priorityBadge(c.priority)}
                       </div>
-                      {c.transcript && (
+                      {c.voiceLine && (
                         <p className="flex items-start gap-1.5 rounded-lg bg-white/70 px-2.5 py-1.5 text-xs italic leading-relaxed text-rose-700">
                           <Quote size={11} className="mt-0.5 shrink-0 text-rose-400" />
-                          <span>“{c.transcript}”</span>
+                          <span>
+                            “{c.voiceLine}”
+                            {!c.transcript.trim() && c.voiceLine ? (
+                              <span className="ml-1 not-italic text-[10px] text-stone-400">
+                                (from visit log)
+                              </span>
+                            ) : null}
+                          </span>
                         </p>
                       )}
                       {c.aiSummary && (
@@ -719,7 +779,7 @@ export default function FamilyDashboardPage() {
                           <span>{c.aiSummary}</span>
                         </p>
                       )}
-                      {!c.transcript && !c.aiSummary && c.notes && (
+                      {!c.voiceLine && !c.aiSummary && c.notes && (
                         <p className="text-xs text-stone-400">{c.notes}</p>
                       )}
                     </div>

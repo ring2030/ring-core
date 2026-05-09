@@ -1,28 +1,24 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { Bell } from "lucide-react";
 import { StatusBadge, type BadgeTone } from "@/components/ui/ThemePrimitives";
 import { emojiForReason, normalizeReasonLabel } from "@/lib/calls/reasons";
 
 /**
- * Subscribe-style "current time" hook.
- *
- * - On the server we return null (no live clock during SSR), which keeps
- *   the first paint deterministic and avoids hydration mismatches.
- * - On the client the snapshot is `Date.now()` so the very first client
- *   render already has a usable clock — without setState-in-effect.
+ * Client-only wall clock for relative timestamps. Must not call `Date.now()`
+ * inside `useSyncExternalStore`'s getSnapshot — a new number every render
+ * triggers an infinite re-render loop and breaks the nurse dashboard.
  */
 function useNow(intervalMs: number): Date | null {
-  const ms = useSyncExternalStore<number | null>(
-    (notify) => {
-      const id = setInterval(notify, intervalMs);
-      return () => clearInterval(id);
-    },
-    () => Date.now(),
-    () => null,
-  );
-  return typeof ms === "number" ? new Date(ms) : null;
+  const [now, setNow] = useState<Date | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- single mount tick for client-only clock
+    setNow(new Date());
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
 }
 
 // ─── Types ───────────────────────────────────────────────────────────────────
