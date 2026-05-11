@@ -1,6 +1,7 @@
 /**
  * Shared helpers for Sentry initialisation across server, edge, and client.
  */
+import { scrubBreadcrumbMessage, scrubPII } from "@/lib/observability/scrubPII";
 
 /** Clamp a sampling rate env var to [0, 1]. Returns `fallback` on invalid input. */
 export function parseSampleRate(
@@ -38,36 +39,6 @@ export function resolveRelease(
  *  - form values / query string values that look like freetext
  */
 export function makePiiBeforeSend() {
-  const SENSITIVE_KEYS = [
-    "送信者",
-    "sender",
-    "patientName",
-    "認識文",
-    "transcript",
-    "要約",
-    "summary",
-    "videoUrl",
-    "video_url",
-    "email",
-    "token",
-    "password",
-    "sessionId",
-  ];
-
-  const scrub = (value: unknown): unknown => {
-    if (!value || typeof value !== "object") return value;
-    if (Array.isArray(value)) return value.map((item) => scrub(item));
-
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const hit = SENSITIVE_KEYS.some((s) =>
-        k.toLowerCase().includes(s.toLowerCase()),
-      );
-      out[k] = hit ? "[REDACTED]" : scrub(v);
-    }
-    return out;
-  };
-
   return function beforeSend(
     event: Parameters<NonNullable<import("@sentry/core").ClientOptions["beforeSend"]>>[0],
   ): typeof event | null {
@@ -84,30 +55,58 @@ export function makePiiBeforeSend() {
     }
 
     if (event.contexts) {
-      event.contexts = scrub(event.contexts) as typeof event.contexts;
+      event.contexts = scrubPII(event.contexts) as typeof event.contexts;
     }
     if (event.extra) {
-      event.extra = scrub(event.extra) as typeof event.extra;
+      event.extra = scrubPII(event.extra) as typeof event.extra;
     }
     if (event.request?.data) {
-      event.request.data = scrub(event.request.data);
+      event.request.data = scrubPII(event.request.data);
     }
     if (event.request?.headers) {
-      event.request.headers = scrub(event.request.headers) as typeof event.request.headers;
+      event.request.headers = scrubPII(event.request.headers) as typeof event.request.headers;
     }
     if (event.request?.cookies) {
-      event.request.cookies = scrub(event.request.cookies) as typeof event.request.cookies;
+      event.request.cookies = scrubPII(event.request.cookies) as typeof event.request.cookies;
+    }
+    if (event.user) {
+      if (event.user.id) {
+        event.user = { id: event.user.id };
+      } else {
+        delete event.user;
+      }
     }
     if (event.breadcrumbs) {
       event.breadcrumbs = event.breadcrumbs.map((b) => {
-        if (b.data === undefined) return b;
-        return {
+        const next = {
           ...b,
-          data: scrub(b.data) as typeof b.data,
         };
+        if (b.data) {
+          next.data = scrubPII(b.data) as typeof b.data;
+        }
+        if (typeof b.message === "string") {
+          next.message = scrubBreadcrumbMessage(b.message);
+        }
+        return next;
       });
     }
 
+    return event;
+  };
+}
+
+export function makePiiBeforeSendTransaction() {
+  return function beforeSendTransaction(
+    event: Parameters<
+      NonNullable<import("@sentry/core").ClientOptions["beforeSendTransaction"]>
+    >[0],
+  ): typeof event | null {
+    if (event.contexts) {
+      event.contexts = scrubPII(event.contexts) as typeof event.contexts;
+    }
+    if (event.extra) {
+      event.extra = scrubPII(event.extra) as typeof event.extra;
+    }
     return event;
   };
 }

@@ -127,7 +127,7 @@ Production errors are captured by **Sentry** (`@sentry/nextjs`) on both sides of
 - **Client:** Gaze pipeline failures (TF.js init failure, MediaPipe asset 404, Eyedid license validation), Web Speech API errors, unhandled React errors via the Sentry error boundary.
 - **Server:** Route Handler exceptions, Gemini API failures (with the local rule-based fallback path tracked separately so we can see how often the safety net activates), Firebase Admin errors, rate-limit denials.
 
-PII is scrubbed before events leave the application — patient names, voice transcripts, and family video URLs are stripped via Sentry's `beforeSend` hook.
+PII is scrubbed before events leave the application — patient names, voice transcripts, family video URLs, email addresses, and session tokens are stripped via Sentry's `beforeSend` hook.
 
 Sentry release tracking is keyed off the Vercel deployment ID, so we can attribute regressions to a specific deploy.
 

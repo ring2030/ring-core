@@ -1,5 +1,10 @@
 import * as Sentry from "@sentry/nextjs";
-import { makePiiBeforeSend, parseSampleRate, resolveRelease } from "@/lib/sentry/config";
+import {
+  makePiiBeforeSend,
+  makePiiBeforeSendTransaction,
+  parseSampleRate,
+  resolveRelease,
+} from "@/lib/sentry/config";
 
 Sentry.init({
   dsn: process.env["NEXT_PUBLIC_SENTRY_DSN"],
@@ -24,6 +29,7 @@ Sentry.init({
   integrations: [Sentry.replayIntegration()],
   sendDefaultPii: false,
   beforeSend: makePiiBeforeSend(),
+  beforeSendTransaction: makePiiBeforeSendTransaction(),
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
