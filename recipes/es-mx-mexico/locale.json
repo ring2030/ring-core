@@ -1,0 +1,14 @@
+{
+  "locale": "es-MX",
+  "ui": {
+    "reason_bathroom": "[TODO: baño / sanitario — choose with staff]",
+    "reason_conversation": "[TODO: plática / conversación]",
+    "dwell_hint": "[TODO]",
+    "staff_incoming": "[TODO]",
+    "end_session": "[TODO]"
+  },
+  "triage_keywords": [],
+  "ai_templates": {
+    "comfort_short": "[TODO]"
+  }
+}

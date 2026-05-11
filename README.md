@@ -5,6 +5,8 @@
 
 **Live demo:** [https://ring-core2026.vercel.app](https://ring-core2026.vercel.app)
 
+**ring Open Protocol (ROP):** open spec + reusable core for rebuilding gaze-assisted nurse-call experiences in any language — [Landing](https://ring-core2026.vercel.app/open-protocol) · [Spec (Markdown)](docs/spec/ROP-1.0.md) · [`@ring-open/core`](packages/ring-open-core/)
+
 ### Screenshots
 
 | Patient (`/`) | Nurse (`/dashboard/nurse`) | Family (`/dashboard/family`) |

@@ -14,7 +14,7 @@ if (typeof window === "undefined") {
 }
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["seeso"],
+  transpilePackages: ["seeso", "@ring-open/core"],
   turbopack: {
     resolveAlias: {
       "@mediapipe/face_mesh": mediapipeFaceMeshShim,

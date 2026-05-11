@@ -1,0 +1,19 @@
+{
+  "locale": "en-US",
+  "ui": {
+    "reason_bathroom": "Restroom",
+    "reason_conversation": "Chat",
+    "dwell_hint": "Keep looking at your choice for a moment",
+    "staff_incoming": "We’re letting staff know",
+    "end_session": "End conversation"
+  },
+  "triage_keywords": [
+    { "id": "chest", "keywords": ["chest pain"], "priority": 5 },
+    { "id": "breath", "keywords": ["can't breathe", "short of breath"], "priority": 5 },
+    { "id": "fall", "keywords": ["fell", "fallen"], "priority": 4 },
+    { "id": "water", "keywords": ["water", "drink"], "priority": 2 }
+  ],
+  "ai_templates": {
+    "comfort_short": "I'm right here with you. Take your time."
+  }
+}

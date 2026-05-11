@@ -1,0 +1,14 @@
+{
+  "locale": "sw-KE",
+  "ui": {
+    "reason_bathroom": "[TODO]",
+    "reason_conversation": "[TODO]",
+    "dwell_hint": "[TODO]",
+    "staff_incoming": "[TODO]",
+    "end_session": "[TODO]"
+  },
+  "triage_keywords": [],
+  "ai_templates": {
+    "comfort_short": "[TODO]"
+  }
+}

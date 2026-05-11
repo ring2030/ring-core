@@ -1,0 +1,19 @@
+{
+  "locale": "ja-JP",
+  "ui": {
+    "reason_bathroom": "トイレ",
+    "reason_conversation": "お話",
+    "dwell_hint": "見つめたまま少し待ってね",
+    "staff_incoming": "スタッフにお知らせしています",
+    "end_session": "会話を終わる"
+  },
+  "triage_keywords": [
+    { "id": "chest", "keywords": ["胸が痛い", "Chest pain"], "priority": 5 },
+    { "id": "breath", "keywords": ["息が苦しい", "呼吸"], "priority": 5 },
+    { "id": "fall", "keywords": ["転んだ", "Fall"], "priority": 4 },
+    { "id": "water", "keywords": ["水", "お茶"], "priority": 2 }
+  ],
+  "ai_templates": {
+    "comfort_short": "ここにいるよ。ゆっくりでいいよ。"
+  }
+}

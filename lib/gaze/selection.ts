@@ -1,4 +1,11 @@
 import { REASON_CHAT, REASON_RESTROOM } from "@/lib/calls/reasons";
+import {
+  computeNextProgress as coreComputeNextProgress,
+  initialStabilityState,
+  selectDichotomyTarget,
+  stepTargetStability as coreStepTargetStability,
+  type TargetStabilityState as CoreTargetStabilityState,
+} from "@ring-open/core";
 
 export type GazeTarget = typeof REASON_RESTROOM | typeof REASON_CHAT | null;
 
@@ -14,6 +21,7 @@ type SelectParams = {
 /**
  * 視線座標から左右ターゲットを判定する。
  * 中央にデッドゾーンを作り、誤反応を抑える。
+ * （@ring-open/core の幾何ロジックを ring の理由ラベルに束ねる）
  */
 export function selectGazeTarget({
   x,
@@ -23,18 +31,16 @@ export function selectGazeTarget({
   leftThresholdRatio = 0.43,
   rightThresholdRatio = 0.57,
 }: SelectParams): GazeTarget {
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (x < 0 || y < 0) return null;
-
-  const activeTop = height * 0.1;
-  if (y <= activeTop) return null;
-
-  const leftThreshold = width * leftThresholdRatio;
-  const rightThreshold = width * rightThresholdRatio;
-
-  if (x < leftThreshold) return REASON_RESTROOM;
-  if (x > rightThreshold) return REASON_CHAT;
-  return null;
+  return selectDichotomyTarget({
+    x,
+    y,
+    width,
+    height,
+    leftTarget: REASON_RESTROOM,
+    rightTarget: REASON_CHAT,
+    leftThresholdRatio,
+    rightThresholdRatio,
+  }) as GazeTarget;
 }
 
 /**
@@ -47,8 +53,7 @@ export function computeNextProgress(
   risePerTick = 3,
   fallPerTick = 1,
 ): number {
-  if (hasTarget) return Math.min(prev + risePerTick, 100);
-  return Math.max(prev - fallPerTick, 0);
+  return coreComputeNextProgress(prev, hasTarget, risePerTick, fallPerTick);
 }
 
 export type TargetStabilityState = {
@@ -58,12 +63,8 @@ export type TargetStabilityState = {
   lostFrames: number;
 };
 
-export const INITIAL_TARGET_STABILITY: TargetStabilityState = {
-  locked: null,
-  candidate: null,
-  candidateFrames: 0,
-  lostFrames: 0,
-};
+export const INITIAL_TARGET_STABILITY: TargetStabilityState =
+  initialStabilityState<string>() as TargetStabilityState;
 
 type StabilityOptions = {
   confirmFrames?: number;
@@ -80,37 +81,9 @@ export function stepTargetStability(
   raw: GazeTarget,
   opts: StabilityOptions = {},
 ): TargetStabilityState {
-  const confirmFrames = opts.confirmFrames ?? 4;
-  const releaseFrames = opts.releaseFrames ?? 3;
-
-  // ロック中のターゲットを継続して見ている
-  if (raw != null && raw === prev.locked) {
-    return { locked: prev.locked, candidate: null, candidateFrames: 0, lostFrames: 0 };
-  }
-
-  // 視線を見失った
-  if (raw == null) {
-    if (prev.locked == null) return INITIAL_TARGET_STABILITY;
-    const nextLost = prev.lostFrames + 1;
-    if (nextLost >= releaseFrames) return INITIAL_TARGET_STABILITY;
-    return {
-      locked: prev.locked,
-      candidate: null,
-      candidateFrames: 0,
-      lostFrames: nextLost,
-    };
-  }
-
-  // ロック中と別ターゲットを見始めた（または未ロック）
-  const nextFrames = prev.candidate === raw ? prev.candidateFrames + 1 : 1;
-  if (nextFrames >= confirmFrames) {
-    return { locked: raw, candidate: null, candidateFrames: 0, lostFrames: 0 };
-  }
-
-  return {
-    locked: prev.locked,
-    candidate: raw,
-    candidateFrames: nextFrames,
-    lostFrames: 0,
-  };
+  return coreStepTargetStability(
+    prev as CoreTargetStabilityState<string>,
+    raw as string | null,
+    opts,
+  ) as TargetStabilityState;
 }

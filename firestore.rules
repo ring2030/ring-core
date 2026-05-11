@@ -27,6 +27,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // --- Public Health Insight Layer (PHIL) aggregates -------------------
+    //   * Read: public (no auth). These documents are explicitly designed
+    //     to be researcher- and journalist-readable; they contain only
+    //     anonymized counts / proportions, with k-anonymity suppression
+    //     applied by the writer (see `lib/stats/quality.ts`).
+    //   * Write: server-only (firebase-admin from the cron job at
+    //     /api/cron/aggregate-phil). Client SDKs MUST NOT be able to
+    //     fabricate or alter PHIL documents.
+    match /phil_aggregates/{date} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // If AUDIT_LOGS_COLLECTION is overridden to a hospital-scoped name,
     // mirror the deny-rule here as well, e.g.:
     //
