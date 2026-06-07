@@ -55,8 +55,8 @@ const FAREWELLS: Record<ConvLang, readonly string[]> = {
 } as const;
 
 const OPENING_LINE: Record<ConvLang, string> = {
-  ja: "きよ子さん、ここにいるよ。どうしたの?",
-  en: "Hello Kiyoko, I'm right here. What's on your mind?",
+  ja: "ひでふみさん、どうしましたか？ ここにいますからね。",
+  en: "Hidefumi, I'm right here with you. What's on your mind?",
 };
 
 function pickFrom<T>(items: readonly T[], fallback: T): T {

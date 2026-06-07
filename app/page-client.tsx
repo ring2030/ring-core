@@ -296,7 +296,7 @@ export default function GrandmaGazePage() {
               reason === REASON_RESTROOM
                 ? "Sent via gaze input"
                 : "AI conversation started",
-            senderName: "Kiyoko",
+            senderName: "秀文",
             senderRole: "patient",
             priority: reason === REASON_RESTROOM ? 4 : 2,
           }),
